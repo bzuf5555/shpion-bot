@@ -11,6 +11,7 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 from config import BOT_TOKEN, CATEGORIES, CATEGORY_IMAGES, MIN_PLAYERS, MAX_PLAYERS, OWNER_ID, REAL_CATEGORIES
 
 JOIN_TIMEOUT = 180  # 3 daqiqa (soniyada)
+_bot_username: str = ""
 from game import GameState, get_game, save_state, load_state
 from subscriptions import (
     PLANS, add_subscription, get_expiry, is_subscribed,
@@ -70,8 +71,12 @@ def _join_text(game: GameState) -> str:
 
 
 def _role_keyboard(game: GameState) -> InlineKeyboardMarkup:
+    chat_id = game.join_chat_id or 0
     rows = [
-        [InlineKeyboardButton(game.player_names[uid], callback_data=f"role_{uid}")]
+        [InlineKeyboardButton(
+            game.player_names[uid],
+            url=f"https://t.me/{_bot_username}?start=reveal_{chat_id}_{uid}"
+        )]
         for uid in game.players
     ]
     rows.append([InlineKeyboardButton("🗳 Ovoz berish", callback_data="start_vote")])
@@ -106,6 +111,51 @@ def _is_owner(user_id: int) -> bool:
 
 # ─── commands ────────────────────────────────────────────────────────────────
 
+async def _handle_reveal(update, user, arg: str) -> None:
+    lang = get_lang(user.id)
+    try:
+        _, chat_id_str, uid_str = arg.split("_", 2)
+        chat_id = int(chat_id_str)
+        uid     = int(uid_str)
+    except Exception:
+        await update.message.reply_text("Noto'g'ri havola.")
+        return
+
+    if user.id != uid:
+        await update.message.reply_text("Bu havola siz uchun emas!")
+        return
+
+    game = get_game(chat_id)
+    if game.state not in ("roles", "voting"):
+        await update.message.reply_text("O'yin tugagan yoki hali boshlanmagan.")
+        return
+    if user.id not in game.players:
+        await update.message.reply_text("Siz bu o'yinda qatnashmaysiz.")
+        return
+    if user.id in game.roles_received:
+        await update.message.reply_text(t("role_already", lang))
+        return
+
+    is_spy = user.id in game.spies
+    if is_spy:
+        spy_img = "images/spy.jpg"
+        if os.path.isfile(spy_img):
+            with open(spy_img, "rb") as f:
+                await update.message.reply_photo(f, caption=t("spy_caption", lang))
+        else:
+            await update.message.reply_text(t("spy_caption", lang))
+    else:
+        image_path = game.selected_image or ""
+        if image_path and os.path.isfile(image_path):
+            with open(image_path, "rb") as img:
+                await update.message.reply_photo(img, caption=t("civilian_caption", lang, cat=game.category))
+        else:
+            await update.message.reply_text(t("civilian_caption", lang, cat=game.category))
+
+    game.roles_received.append(user.id)
+    save_state()
+
+
 async def _subscribe_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton(f"⭐ {p['stars']} Stars — {p['label']}", callback_data=f"buy_{k}")]
@@ -132,6 +182,9 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                         add_referral(referrer_id, user.id)
                 except ValueError:
                     pass
+            if arg.startswith("reveal_"):
+                await _handle_reveal(update, user, arg)
+                return
         lang = get_lang(user.id)
         await update.message.reply_text(t("start_private", lang))
         return
@@ -550,8 +603,6 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await _on_join(query, game, user)
     elif data == "start_game":
         await _on_start_game(query, context, game)
-    elif data.startswith("role_"):
-        await _on_role_reveal(query, context, game, user, int(data[5:]))
     elif data == "start_vote":
         await _on_start_vote(query, game, user)
     elif data.startswith("vote_") and data != "vote_result":
@@ -965,6 +1016,8 @@ async def _expiry_reminder_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def _set_commands(app: Application) -> None:
+    global _bot_username
+    _bot_username = (await app.bot.get_me()).username
     all_cmds = [
         BotCommand("start",     "O'yinni boshlash"),
         BotCommand("subscribe",   "Obuna olish (Stars bilan)"),
