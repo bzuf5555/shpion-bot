@@ -41,6 +41,7 @@ STATE_LABELS = {
     "spies":    "Ayg'oqchi soni tanlanmoqda",
     "joining":  "O'yinchilar qo'shilmoqda",
     "roles":    "O'yin davom etmoqda",
+    "voting":   "Ovoz berish davom etmoqda",
 }
 
 
@@ -71,6 +72,24 @@ def _role_keyboard(game: GameState) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(game.player_names[uid], callback_data=f"role_{uid}")]
         for uid in game.players
     ]
+    rows.append([InlineKeyboardButton("🗳 Ovoz berish", callback_data="start_vote")])
+    rows.append([InlineKeyboardButton("🏁 O'yinni tugatish", callback_data="end_game")])
+    return InlineKeyboardMarkup(rows)
+
+
+def _vote_keyboard(game: GameState, voter_id: int) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(
+            f"{'✅ ' if game.votes.get(voter_id) == uid else ''}{game.player_names[uid]}",
+            callback_data=f"vote_{uid}"
+        )]
+        for uid in game.players if uid != voter_id
+    ]
+    voted_count = len(game.votes)
+    rows.append([InlineKeyboardButton(
+        f"📊 Natija ({voted_count}/{len(game.players)} ovoz)",
+        callback_data="vote_result"
+    )])
     rows.append([InlineKeyboardButton("🏁 O'yinni tugatish", callback_data="end_game")])
     return InlineKeyboardMarkup(rows)
 
@@ -527,6 +546,12 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await _on_start_game(query, context, game)
     elif data.startswith("role_"):
         await _on_role_reveal(query, context, game, user, int(data[5:]))
+    elif data == "start_vote":
+        await _on_start_vote(query, game, user)
+    elif data.startswith("vote_") and data != "vote_result":
+        await _on_vote(query, game, user, int(data[5:]))
+    elif data == "vote_result":
+        await _on_vote_result(query, game)
     elif data == "end_game":
         await _on_end_game(query, context, game)
 
@@ -805,13 +830,104 @@ async def _on_role_reveal(query, context, game: GameState, user, target_uid: int
         await query.answer("Xatolik yuz berdi, qayta urining.", show_alert=True)
 
 
+async def _on_start_vote(query, game: GameState, user) -> None:
+    if game.state != "roles":
+        await query.answer("Ovoz berish faqat o'yin davomida!", show_alert=True)
+        return
+    if len(game.players) < 2:
+        await query.answer("Ovoz berish uchun kamida 2 o'yinchi kerak!", show_alert=True)
+        return
+    game.votes = {}
+    game.state = "voting"
+    game.vote_message_id = query.message.message_id
+    save_state()
+
+    voted_count = len(game.votes)
+    await query.edit_message_text(
+        f"🗳 Ovoz berish boshlandi!\nKim ayg'oqchi deb o'ylaysiz?\n\n"
+        f"Ovoz berganlar: {voted_count}/{len(game.players)}",
+        reply_markup=_vote_keyboard(game, user.id),
+    )
+
+
+async def _on_vote(query, game: GameState, user, target_uid: int) -> None:
+    if game.state != "voting":
+        await query.answer("Hozir ovoz berish vaqti emas!", show_alert=True)
+        return
+    if user.id not in game.players:
+        await query.answer("Siz bu o'yinda qatnashmaysiz!", show_alert=True)
+        return
+
+    game.votes[user.id] = target_uid
+    save_state()
+
+    voted_count = len(game.votes)
+    target_name = game.player_names.get(target_uid, str(target_uid))
+    await query.answer(f"Ovozingiz: {target_name}", show_alert=False)
+
+    try:
+        await query.edit_message_text(
+            f"🗳 Ovoz berish davom etmoqda...\n\n"
+            f"Ovoz berganlar: {voted_count}/{len(game.players)}",
+            reply_markup=_vote_keyboard(game, user.id),
+        )
+    except Exception:
+        pass
+
+
+async def _on_vote_result(query, game: GameState) -> None:
+    if game.state not in ("voting", "roles"):
+        return
+
+    if not game.votes:
+        await query.answer("Hali hech kim ovoz bermagan!", show_alert=True)
+        return
+
+    # Ovozlarni hisoblash
+    counts: dict[int, int] = {}
+    for target in game.votes.values():
+        counts[target] = counts.get(target, 0) + 1
+
+    max_votes = max(counts.values())
+    leaders = [uid for uid, c in counts.items() if c == max_votes]
+
+    lines = ["📊 Ovoz natijalari:\n"]
+    for uid in sorted(counts, key=lambda x: -counts[x]):
+        name = game.player_names.get(uid, str(uid))
+        bar = "🔴" * counts[uid] + "⚪" * (len(game.votes) - counts[uid])
+        lines.append(f"{bar} {name} — {counts[uid]} ovoz")
+
+    lines.append("")
+    spy_names = [game.player_names.get(uid) for uid in game.spies]
+
+    if len(leaders) == 1:
+        chosen = game.player_names.get(leaders[0])
+        is_caught = leaders[0] in game.spies
+        if is_caught:
+            lines.append(f"✅ {chosen} — ayg'oqchi topildi!")
+        else:
+            lines.append(f"❌ {chosen} — ayg'oqchi emas edi!")
+        lines.append(f"Haqiqiy ayg'oqchi(lar): {', '.join(spy_names)}")
+    else:
+        chosen_names = [game.player_names.get(u) for u in leaders]
+        lines.append(f"🤝 Durrang: {', '.join(chosen_names)}")
+        lines.append(f"Haqiqiy ayg'oqchi(lar): {', '.join(spy_names)}")
+
+    await query.edit_message_text(
+        "\n".join(lines),
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("🏁 O'yinni tugatish", callback_data="end_game")
+        ]])
+    )
+
+
 async def _on_end_game(query, context, game: GameState) -> None:
     if game.state == "idle":
         return
 
     _cancel_join_job(context, query.message.chat_id)
 
-    if game.state == "roles" and game.spies:
+    if game.state in ("roles", "voting") and game.spies:
         spy_names = [game.player_names[uid] for uid in game.spies]
         result = "Ayg'oqchi(lar): " + ", ".join(spy_names)
         track_game(query.message.chat_id, game.player_names, game.spies)

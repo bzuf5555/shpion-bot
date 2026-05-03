@@ -33,6 +33,8 @@
 - [x] /stats (owner) — foydalanuvchilar, obunalar, daromad
 - [x] Payment tracking — barcha to'lovlar saqlanadi
 
+## ✅ Bajarildi (qo'shimcha 3)
+- [x] Ovoz berish — "🗳 Ovoz berish" tugmasi, natijalar, ayg'oqchi topildi/topilmadi
+
 ## ⏳ Qolgan tasklar
-- [ ] Ovoz berish — kim ayg'oqchi deb ovoz berish (o'yin ichida)
 - [ ] Ko'p til — UZ / RU / EN (foydalanuvchi tanlaydi)

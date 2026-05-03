@@ -39,6 +39,8 @@ class GameState:
     join_message_id: Optional[int] = None
     join_chat_id: Optional[int] = None
     selected_image: Optional[str] = None
+    votes: dict = field(default_factory=dict)          # voter_id -> target_id
+    vote_message_id: Optional[int] = None
 
     def add_player(self, user_id: int, name: str) -> bool:
         if user_id in self.players or len(self.players) >= MAX_PLAYERS:
@@ -65,6 +67,8 @@ class GameState:
             "join_message_id": self.join_message_id,
             "join_chat_id": self.join_chat_id,
             "selected_image": self.selected_image,
+            "votes": {str(k): v for k, v in self.votes.items()},
+            "vote_message_id": self.vote_message_id,
         }
 
     @classmethod
@@ -77,9 +81,11 @@ class GameState:
         gs.player_names    = {int(k): v for k, v in data.get("player_names", {}).items()}
         gs.spies           = data.get("spies", [])
         gs.roles_received  = data.get("roles_received", [])
-        gs.join_message_id = data.get("join_message_id")
-        gs.join_chat_id    = data.get("join_chat_id")
-        gs.selected_image  = data.get("selected_image")
+        gs.join_message_id  = data.get("join_message_id")
+        gs.join_chat_id     = data.get("join_chat_id")
+        gs.selected_image   = data.get("selected_image")
+        gs.votes            = {int(k): v for k, v in data.get("votes", {}).items()}
+        gs.vote_message_id  = data.get("vote_message_id")
         return gs
 
 
