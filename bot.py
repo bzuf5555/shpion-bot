@@ -303,8 +303,6 @@ async def cmd_kick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
-    await query.answer()
-
     chat = query.message.chat
     user = query.from_user
     game = get_game(chat.id)
@@ -313,9 +311,10 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if data.startswith("buy_"):
         await _on_buy(query, context, user, data[4:])
         return
-    elif data.startswith("cat_"):
+    await query.answer()
+    if data.startswith("cat_"):
         await _on_category(query, game, data[4:])
-    elif data.startswith("spy_"):
+    if data.startswith("spy_"):
         await _on_spy_count(query, game, int(data[4:]))
     elif data == "join":
         await _on_join(query, game, user)
@@ -332,23 +331,27 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 async def _on_buy(query, context, user, plan_key: str) -> None:
     plan = PLANS.get(plan_key)
     if not plan:
+        await query.answer()
         return
     if query.message.chat.type != ChatType.PRIVATE:
-        await query.answer("To'lov faqat shaxsiy chatda amalga oshiriladi!", show_alert=True)
+        await query.answer("To'lov faqat shaxsiy chatda!", show_alert=True)
         return
     await query.answer()
-    await context.bot.send_invoice(
-        chat_id=user.id,
-        title=f"Shpion Bot — {plan['label']}",
-        description=(
-            f"{plan['desc']}\n\n"
-            f"⚠️ Agar sizda yetarlicha Stars mavjud bo'lmasa, "
-            f"Telegram ilovasida Settings → Stars bo'limidan Stars sotib oling."
-        ),
-        payload=f"sub_{plan_key}",
-        currency="XTR",
-        prices=[LabeledPrice(plan["label"], plan["stars"])],
-    )
+    try:
+        await context.bot.send_invoice(
+            chat_id=user.id,
+            title=f"Shpion Bot — {plan['label']}",
+            description=(
+                f"{plan['desc']}\n\n"
+                f"⚠️ Stars yetarli bo'lmasa: Telegram → Settings → Stars"
+            ),
+            payload=f"sub_{plan_key}",
+            currency="XTR",
+            prices=[LabeledPrice(plan["label"], plan["stars"])],
+        )
+    except Exception as e:
+        logger.error("send_invoice error: %s", e)
+        await query.message.reply_text(f"Xatolik yuz berdi: {e}")
 
 
 async def pre_checkout_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
