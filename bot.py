@@ -86,7 +86,8 @@ async def _subscribe_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         "⭐ 5 Stars — 1 Hafta\n"
         "⭐ 15 Stars — 1 Oy\n"
         "⭐ 50 Stars — 6 Oy\n"
-        "⭐ 100 Stars — 1 Yil",
+        "⭐ 100 Stars — 1 Yil\n\n"
+        "💡 Stars yetarli bo'lmasa: Telegram → Settings → Stars",
         reply_markup=keyboard,
     )
 
@@ -339,7 +340,11 @@ async def _on_buy(query, context, user, plan_key: str) -> None:
     await context.bot.send_invoice(
         chat_id=user.id,
         title=f"Shpion Bot — {plan['label']}",
-        description=plan["desc"],
+        description=(
+            f"{plan['desc']}\n\n"
+            f"⚠️ Agar sizda yetarlicha Stars mavjud bo'lmasa, "
+            f"Telegram ilovasida Settings → Stars bo'limidan Stars sotib oling."
+        ),
         payload=f"sub_{plan_key}",
         currency="XTR",
         prices=[LabeledPrice(plan["label"], plan["stars"])],
