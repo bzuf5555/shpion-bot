@@ -121,6 +121,19 @@ def use_promo(code: str, user_id: int) -> str:
     return plan_key
 
 
+def get_expiring_soon(hours: int = 24) -> list[tuple[int, datetime]]:
+    """Obunasi {hours} soat ichida tugaydigan foydalanuvchilar."""
+    con = _conn()
+    now = datetime.utcnow()
+    deadline = now + __import__('datetime').timedelta(hours=hours)
+    rows = con.execute(
+        "SELECT user_id, expires_at FROM subscriptions WHERE expires_at > ? AND expires_at <= ?",
+        (now.isoformat(), deadline.isoformat())
+    ).fetchall()
+    con.close()
+    return [(uid, datetime.fromisoformat(exp)) for uid, exp in rows]
+
+
 def get_expiry(user_id: int) -> Optional[datetime]:
     con = _conn()
     row = con.execute(

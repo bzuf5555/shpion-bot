@@ -20,9 +20,9 @@
 - [x] Bot commands menyusi (/ bosganda)
 - [x] Others kategoriyasi (28 rasm)
 
-## 🔄 Bajarilmoqda
-- [ ] Vaqt limiti — qo'shilish bosqichi uchun 3 daqiqa timeout
-- [ ] Promo kod — /promo CODE bilan bepul obuna
+## ✅ Bajarildi (qo'shimcha)
+- [x] Vaqt limiti — 3 daqiqa timeout, avtomatik boshlash yoki bekor qilish
+- [x] Promo kod — /addpromo (yaratish), /promo (ishlatish)
 
 ## ⏳ Navbatdagi
 - [ ] Ovoz berish — kim ayg'oqchi deb ovoz berish

@@ -12,7 +12,7 @@ from config import BOT_TOKEN, CATEGORIES, CATEGORY_IMAGES, MIN_PLAYERS, MAX_PLAY
 
 JOIN_TIMEOUT = 180  # 3 daqiqa (soniyada)
 from game import GameState, get_game, save_state, load_state
-from subscriptions import PLANS, add_subscription, get_expiry, is_subscribed, create_promo, use_promo
+from subscriptions import PLANS, add_subscription, get_expiry, is_subscribed, create_promo, use_promo, get_expiring_soon
 
 # Har bir guruh uchun alohida minimum o'yinchi soni
 _chat_min: dict[int, int] = {}
@@ -683,6 +683,23 @@ async def _on_end_game(query, context, game: GameState) -> None:
 
 # ─── bot commands setup ──────────────────────────────────────────────────────
 
+async def _expiry_reminder_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    for user_id, expires in get_expiring_soon(hours=24):
+        try:
+            bot_username = (await context.bot.get_me()).username
+            keyboard = InlineKeyboardMarkup([[
+                InlineKeyboardButton("⭐ Uzaytirish", url=f"https://t.me/{bot_username}?start=subscribe")
+            ]])
+            await context.bot.send_message(
+                user_id,
+                f"⚠️ Obunangiz holati: ertaga {expires.strftime('%d.%m.%Y %H:%M')} da tugaydi!\n"
+                f"Uzaytirish uchun quyidagi tugmani bosing.",
+                reply_markup=keyboard,
+            )
+        except Exception:
+            pass
+
+
 async def _set_commands(app: Application) -> None:
     all_cmds = [
         BotCommand("start",     "O'yinni boshlash"),
@@ -739,6 +756,9 @@ def main() -> None:
     app.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
     app.add_handler(CallbackQueryHandler(on_callback))
+
+    # Har 6 soatda obuna eslatmalarini tekshirish
+    app.job_queue.run_repeating(_expiry_reminder_job, interval=21600, first=60)
 
     logger.info("Bot ishga tushdi...")
     app.run_polling(drop_pending_updates=True)
