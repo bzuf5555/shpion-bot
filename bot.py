@@ -9,6 +9,12 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 from config import BOT_TOKEN, CATEGORIES, CATEGORY_IMAGES, MIN_PLAYERS, MAX_PLAYERS
 from game import GameState, get_game, save_state, load_state
 
+# Har bir guruh uchun alohida minimum o'yinchi soni
+_chat_min: dict[int, int] = {}
+
+def get_min(chat_id: int) -> int:
+    return _chat_min.get(chat_id, MIN_PLAYERS)
+
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     level=logging.INFO,
@@ -32,9 +38,9 @@ def _display_name(user) -> str:
     return f"@{user.username}" if user.username else user.full_name
 
 
-def _join_keyboard(player_count: int) -> InlineKeyboardMarkup:
+def _join_keyboard(player_count: int, min_players: int) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton("🎮 O'yinga qo'shilish", callback_data="join")]]
-    if player_count >= MIN_PLAYERS:
+    if player_count >= min_players:
         rows.append([InlineKeyboardButton("▶️ O'yinni boshlash", callback_data="start_game")])
     return InlineKeyboardMarkup(rows)
 
@@ -136,6 +142,87 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await update.message.reply_text("\n".join(lines))
 
 
+async def cmd_setmin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat = update.effective_chat
+    if chat.type == ChatType.PRIVATE:
+        return
+    if not await _is_admin(chat, update.effective_user.id):
+        await update.message.reply_text("Faqat adminlar bu buyruqdan foydalana oladi.")
+        return
+    if not context.args or not context.args[0].isdigit():
+        await update.message.reply_text("Ishlatish: /setmin <son>  (masalan: /setmin 3)")
+        return
+    n = int(context.args[0])
+    if not 1 <= n <= MAX_PLAYERS - 1:
+        await update.message.reply_text(f"Son 1 dan {MAX_PLAYERS - 1} gacha bo'lishi kerak.")
+        return
+    _chat_min[chat.id] = n
+    await update.message.reply_text(f"Minimum o'yinchi soni {n} ta qilib belgilandi.")
+
+
+async def cmd_reveal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat = update.effective_chat
+    if chat.type == ChatType.PRIVATE:
+        return
+    if not await _is_admin(chat, update.effective_user.id):
+        await update.message.reply_text("Faqat adminlar bu buyruqdan foydalana oladi.")
+        return
+    game = get_game(chat.id)
+    if game.state != "roles" or not game.spies:
+        await update.message.reply_text("Hozir faol o'yin yo'q yoki rollar hali tayinlanmagan.")
+        return
+    spy_names = [game.player_names[uid] for uid in game.spies]
+    await update.message.reply_text(
+        f"🕵️ Ayg'oqchi(lar): {', '.join(spy_names)}"
+    )
+
+
+async def cmd_kick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat = update.effective_chat
+    if chat.type == ChatType.PRIVATE:
+        return
+    if not await _is_admin(chat, update.effective_user.id):
+        await update.message.reply_text("Faqat adminlar bu buyruqdan foydalana oladi.")
+        return
+    game = get_game(chat.id)
+    if game.state != "joining":
+        await update.message.reply_text("O'yinchilarni faqat qo'shilish bosqichida chiqarish mumkin.")
+        return
+    if not context.args:
+        await update.message.reply_text("Ishlatish: /kick @username")
+        return
+
+    target = context.args[0].lstrip("@").lower()
+    found_uid = None
+    for uid, name in game.player_names.items():
+        if name.lstrip("@").lower() == target or name.lower() == target:
+            found_uid = uid
+            break
+
+    if found_uid is None:
+        await update.message.reply_text(f"@{target} o'yinchilar ro'yxatida topilmadi.")
+        return
+
+    kicked_name = game.player_names[found_uid]
+    game.players.remove(found_uid)
+    del game.player_names[found_uid]
+    save_state()
+
+    # Qo'shilish xabarini yangilash
+    if game.join_message_id and game.join_chat_id:
+        try:
+            await context.bot.edit_message_text(
+                chat_id=game.join_chat_id,
+                message_id=game.join_message_id,
+                text=_join_text(game),
+                reply_markup=_join_keyboard(len(game.players), get_min(chat.id)),
+            )
+        except BadRequest:
+            pass
+
+    await update.message.reply_text(f"{kicked_name} o'yindan chiqarildi.")
+
+
 # ─── callback router ─────────────────────────────────────────────────────────
 
 async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -185,12 +272,15 @@ async def _on_spy_count(query, game: GameState, count: int) -> None:
         return
     game.spy_count = count
     game.state = "joining"
+    game.join_chat_id = query.message.chat_id
     save_state()
 
-    await query.edit_message_text(
+    msg = await query.edit_message_text(
         _join_text(game),
-        reply_markup=_join_keyboard(0),
+        reply_markup=_join_keyboard(0, get_min(query.message.chat_id)),
     )
+    game.join_message_id = query.message.message_id
+    save_state()
 
 
 async def _on_join(query, game: GameState, user) -> None:
@@ -208,15 +298,16 @@ async def _on_join(query, game: GameState, user) -> None:
     save_state()
     await query.edit_message_text(
         _join_text(game),
-        reply_markup=_join_keyboard(len(game.players)),
+        reply_markup=_join_keyboard(len(game.players), get_min(query.message.chat_id)),
     )
 
 
 async def _on_start_game(query, game: GameState) -> None:
     if game.state != "joining":
         return
-    if len(game.players) < MIN_PLAYERS:
-        await query.answer(f"Kamida {MIN_PLAYERS} ta o'yinchi kerak!", show_alert=True)
+    min_p = get_min(query.message.chat_id)
+    if len(game.players) < min_p:
+        await query.answer(f"Kamida {min_p} ta o'yinchi kerak!", show_alert=True)
         return
 
     game.state = "roles"
@@ -305,6 +396,9 @@ def main() -> None:
     app.add_handler(CommandHandler("start",  cmd_start))
     app.add_handler(CommandHandler("cancel", cmd_cancel))
     app.add_handler(CommandHandler("status", cmd_status))
+    app.add_handler(CommandHandler("setmin", cmd_setmin))
+    app.add_handler(CommandHandler("reveal", cmd_reveal))
+    app.add_handler(CommandHandler("kick",   cmd_kick))
     app.add_handler(CallbackQueryHandler(on_callback))
 
     logger.info("Bot ishga tushdi...")

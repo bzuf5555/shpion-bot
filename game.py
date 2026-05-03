@@ -36,6 +36,8 @@ class GameState:
     player_names: dict = field(default_factory=dict)   # user_id -> display name
     spies: list = field(default_factory=list)          # [user_id, ...]
     roles_received: list = field(default_factory=list) # [user_id, ...]
+    join_message_id: Optional[int] = None
+    join_chat_id: Optional[int] = None
 
     def add_player(self, user_id: int, name: str) -> bool:
         if user_id in self.players or len(self.players) >= MAX_PLAYERS:
@@ -59,18 +61,22 @@ class GameState:
             "player_names": {str(k): v for k, v in self.player_names.items()},
             "spies": self.spies,
             "roles_received": self.roles_received,
+            "join_message_id": self.join_message_id,
+            "join_chat_id": self.join_chat_id,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "GameState":
         gs = cls()
-        gs.state          = data.get("state", "idle")
-        gs.category       = data.get("category")
-        gs.spy_count      = data.get("spy_count", 0)
-        gs.players        = data.get("players", [])
-        gs.player_names   = {int(k): v for k, v in data.get("player_names", {}).items()}
-        gs.spies          = data.get("spies", [])
-        gs.roles_received = data.get("roles_received", [])
+        gs.state           = data.get("state", "idle")
+        gs.category        = data.get("category")
+        gs.spy_count       = data.get("spy_count", 0)
+        gs.players         = data.get("players", [])
+        gs.player_names    = {int(k): v for k, v in data.get("player_names", {}).items()}
+        gs.spies           = data.get("spies", [])
+        gs.roles_received  = data.get("roles_received", [])
+        gs.join_message_id = data.get("join_message_id")
+        gs.join_chat_id    = data.get("join_chat_id")
         return gs
 
 
