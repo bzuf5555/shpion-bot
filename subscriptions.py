@@ -16,22 +16,8 @@ def _conn() -> sqlite3.Connection:
     con = sqlite3.connect(DB_FILE)
     con.execute("""
         CREATE TABLE IF NOT EXISTS subscriptions (
-            user_id  INTEGER PRIMARY KEY,
+            user_id    INTEGER PRIMARY KEY,
             expires_at TEXT NOT NULL
-        )
-    """)
-    con.execute("""
-        CREATE TABLE IF NOT EXISTS bot_admins (
-            user_id  INTEGER PRIMARY KEY,
-            username TEXT
-        )
-    """)
-    con.execute("""
-        CREATE TABLE IF NOT EXISTS known_users (
-            user_id  INTEGER,
-            chat_id  INTEGER,
-            name     TEXT,
-            PRIMARY KEY (user_id, chat_id)
         )
     """)
     con.commit()
@@ -75,61 +61,3 @@ def get_expiry(user_id: int) -> Optional[datetime]:
     ).fetchone()
     con.close()
     return datetime.fromisoformat(row[0]) if row else None
-
-
-# ─── bot admins ──────────────────────────────────────────────────────────────
-
-def add_bot_admin(user_id: int, username: str) -> None:
-    con = _conn()
-    con.execute(
-        "INSERT OR REPLACE INTO bot_admins (user_id, username) VALUES (?, ?)",
-        (user_id, username)
-    )
-    con.commit()
-    con.close()
-
-
-def remove_bot_admin(user_id: int) -> bool:
-    con = _conn()
-    cur = con.execute("DELETE FROM bot_admins WHERE user_id = ?", (user_id,))
-    con.commit()
-    con.close()
-    return cur.rowcount > 0
-
-
-def is_bot_admin(user_id: int) -> bool:
-    con = _conn()
-    row = con.execute(
-        "SELECT 1 FROM bot_admins WHERE user_id = ?", (user_id,)
-    ).fetchone()
-    con.close()
-    return row is not None
-
-
-def get_bot_admins() -> list[tuple[int, str]]:
-    con = _conn()
-    rows = con.execute("SELECT user_id, username FROM bot_admins").fetchall()
-    con.close()
-    return rows
-
-
-# ─── known users ─────────────────────────────────────────────────────────────
-
-def track_user(chat_id: int, user_id: int, name: str) -> None:
-    con = _conn()
-    con.execute(
-        "INSERT OR REPLACE INTO known_users (user_id, chat_id, name) VALUES (?, ?, ?)",
-        (user_id, chat_id, name)
-    )
-    con.commit()
-    con.close()
-
-
-def get_known_users(chat_id: int) -> list[tuple[int, str]]:
-    con = _conn()
-    rows = con.execute(
-        "SELECT user_id, name FROM known_users WHERE chat_id = ? ORDER BY name",
-        (chat_id,)
-    ).fetchall()
-    con.close()
-    return rows

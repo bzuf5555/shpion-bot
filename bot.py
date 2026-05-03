@@ -10,9 +10,7 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 
 from config import BOT_TOKEN, CATEGORIES, CATEGORY_IMAGES, MIN_PLAYERS, MAX_PLAYERS, OWNER_ID, REAL_CATEGORIES
 from game import GameState, get_game, save_state, load_state
-from subscriptions import (PLANS, add_subscription, get_expiry, is_subscribed,
-                           add_bot_admin, remove_bot_admin, is_bot_admin, get_bot_admins,
-                           track_user, get_known_users)
+from subscriptions import PLANS, add_subscription, get_expiry, is_subscribed
 
 # Har bir guruh uchun alohida minimum o'yinchi soni
 _chat_min: dict[int, int] = {}
@@ -75,9 +73,6 @@ async def _is_admin(chat, user_id: int) -> bool:
 def _is_owner(user_id: int) -> bool:
     return OWNER_ID != 0 and user_id == OWNER_ID
 
-def _is_privileged(user_id: int) -> bool:
-    return _is_owner(user_id) or is_bot_admin(user_id)
-
 
 # ─── commands ────────────────────────────────────────────────────────────────
 
@@ -112,7 +107,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     # Obuna tekshiruvi (owner uchun kerak emas)
-    if not _is_privileged(user.id) and not is_subscribed(user.id):
+    if not _is_owner(user.id) and not is_subscribed(user.id):
         bot_username = (await context.bot.get_me()).username
         keyboard = InlineKeyboardMarkup([[
             InlineKeyboardButton(
@@ -167,67 +162,51 @@ async def cmd_mystatus(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         )
 
 
-async def cmd_setadmin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def cmd_gift(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _is_owner(update.effective_user.id):
         await update.message.reply_text("Bu buyruq faqat bot egasi uchun.")
         return
-    chat = update.effective_chat
-    users = get_known_users(chat.id)
-    bot_admins = {uid for uid, _ in get_bot_admins()}
 
-    if not users:
-        await update.message.reply_text(
-            "Hozircha guruhda o'yinga qo'shilgan foydalanuvchilar yo'q.\n"
-            "Ular o'yinga qo'shilgandan so'ng bu buyruqdan foydalaning."
-        )
-        return
-
-    rows = []
-    for uid, name in users:
-        if _is_owner(uid):
-            continue
-        label = f"{'✅ ' if uid in bot_admins else ''}{name}"
-        rows.append([InlineKeyboardButton(label, callback_data=f"sadm_{uid}")])
-
-    if not rows:
-        await update.message.reply_text("Belgilash uchun foydalanuvchi topilmadi.")
-        return
-
-    await update.message.reply_text(
-        "Admin qilmoqchi bo'lgan foydalanuvchini tanlang:\n(✅ — allaqachon admin)",
-        reply_markup=InlineKeyboardMarkup(rows),
-    )
-
-
-async def cmd_removeadmin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not _is_owner(update.effective_user.id):
-        await update.message.reply_text("Bu buyruq faqat bot egasi uchun.")
-        return
     target = update.message.reply_to_message
     if not target:
         await update.message.reply_text(
-            "Foydalanuvchining xabariga reply qilib /removeadmin yozing."
+            "Foydalanuvchining xabariga reply qilib yozing:\n"
+            "/gift week | month | half | year"
         )
         return
+
+    if not context.args:
+        await update.message.reply_text(
+            "Reja kiriting: /gift week | month | half | year"
+        )
+        return
+
+    plan_key = context.args[0].lower()
+    plan = PLANS.get(plan_key)
+    if not plan:
+        await update.message.reply_text(
+            "Noto'g'ri reja. Quyidagilardan birini tanlang:\n"
+            "week | month | half | year"
+        )
+        return
+
     t_user = target.from_user
     name = f"@{t_user.username}" if t_user.username else t_user.full_name
-    removed = remove_bot_admin(t_user.id)
-    if removed:
-        await update.message.reply_text(f"✅ {name} bot adminlikdan olib tashlandi.")
-    else:
-        await update.message.reply_text(f"{name} adminlar ro'yxatida yo'q edi.")
+    expires = add_subscription(t_user.id, plan["days"])
 
+    await update.message.reply_text(
+        f"🎁 {name} ga {plan['label']} obuna sovg'a qilindi!\n"
+        f"Tugash sanasi: {expires.strftime('%d.%m.%Y')}"
+    )
 
-async def cmd_admins(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not _is_owner(update.effective_user.id):
-        await update.message.reply_text("Bu buyruq faqat bot egasi uchun.")
-        return
-    admins = get_bot_admins()
-    if not admins:
-        await update.message.reply_text("Bot adminlari yo'q.")
-        return
-    lines = [f"• {name} (ID: {uid})" for uid, name in admins]
-    await update.message.reply_text("Bot adminlari:\n" + "\n".join(lines))
+    try:
+        await context.bot.send_message(
+            t_user.id,
+            f"🎁 Sizga {plan['label']} bepul obuna sovg'a qilindi!\n"
+            f"Tugash sanasi: {expires.strftime('%d.%m.%Y')}"
+        )
+    except (Forbidden, BadRequest):
+        pass
 
 
 async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -379,9 +358,6 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if data.startswith("buy_"):
         await _on_buy(query, context, user, data[4:])
         return
-    if data.startswith("sadm_"):
-        await _on_setadmin(query, user, int(data[5:]))
-        return
     await query.answer()
     if data.startswith("cat_"):
         await _on_category(query, game, data[4:])
@@ -398,36 +374,6 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 # ─── payment handlers ────────────────────────────────────────────────────────
-
-async def _on_setadmin(query, owner, target_uid: int) -> None:
-    if not _is_owner(owner.id):
-        await query.answer("Faqat bot egasi!", show_alert=True)
-        return
-    chat_id = query.message.chat_id
-    known = {uid: name for uid, name in get_known_users(chat_id)}
-    name = known.get(target_uid, str(target_uid))
-
-    if is_bot_admin(target_uid):
-        remove_bot_admin(target_uid)
-        await query.answer(f"{name} adminlikdan olib tashlandi.", show_alert=True)
-    else:
-        add_bot_admin(target_uid, name)
-        await query.answer(f"✅ {name} admin qilindi.", show_alert=True)
-
-    # Tugmalar ro'yxatini yangilash
-    bot_admins = {uid for uid, _ in get_bot_admins()}
-    rows = []
-    for uid, uname in get_known_users(chat_id):
-        if _is_owner(uid):
-            continue
-        label = f"{'✅ ' if uid in bot_admins else ''}{uname}"
-        rows.append([InlineKeyboardButton(label, callback_data=f"sadm_{uid}")])
-
-    try:
-        await query.edit_message_reply_markup(InlineKeyboardMarkup(rows))
-    except Exception:
-        pass
-
 
 async def _on_buy(query, context, user, plan_key: str) -> None:
     plan = PLANS.get(plan_key)
@@ -530,7 +476,6 @@ async def _on_join(query, game: GameState, user) -> None:
         await query.answer(msg, show_alert=True)
         return
 
-    track_user(query.message.chat_id, user.id, name)
     save_state()
     await query.edit_message_text(
         _join_text(game),
@@ -635,6 +580,7 @@ async def _set_commands(app: Application) -> None:
         BotCommand("subscribe", "Obuna olish (Stars bilan)"),
         BotCommand("mystatus",  "Obuna holatini ko'rish"),
         BotCommand("myid",      "O'zingizning Telegram ID ni ko'rish"),
+        BotCommand("gift",      "[Admin] Foydalanuvchiga obuna sovg'a qilish"),
         BotCommand("cancel",    "[Admin] O'yinni bekor qilish"),
         BotCommand("status",    "[Admin] O'yin holatini ko'rish"),
         BotCommand("setmin",    "[Admin] Minimum o'yinchi sonini belgilash"),
@@ -665,10 +611,8 @@ def main() -> None:
     app.add_handler(CommandHandler("start",     cmd_start))
     app.add_handler(CommandHandler("subscribe", cmd_subscribe))
     app.add_handler(CommandHandler("mystatus",  cmd_mystatus))
-    app.add_handler(CommandHandler("setadmin",    cmd_setadmin))
-    app.add_handler(CommandHandler("removeadmin", cmd_removeadmin))
-    app.add_handler(CommandHandler("admins",      cmd_admins))
-    app.add_handler(CommandHandler("cancel",      cmd_cancel))
+    app.add_handler(CommandHandler("gift",   cmd_gift))
+    app.add_handler(CommandHandler("cancel", cmd_cancel))
     app.add_handler(CommandHandler("status",    cmd_status))
     app.add_handler(CommandHandler("setmin",    cmd_setmin))
     app.add_handler(CommandHandler("reveal",    cmd_reveal))
