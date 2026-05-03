@@ -10,7 +10,7 @@ OWNER_ID: int = int(os.getenv("OWNER_ID", "0"))
 # Misol: postgresql://user:password@localhost:5432/shpion
 DATABASE_URL: str = os.getenv("DATABASE_URL", "")
 
-REAL_CATEGORIES: list[str] = ["Cars", "Watches", "Jobs", "Bloggers", "18+ Actress"]
+REAL_CATEGORIES: list[str] = ["Cars", "Watches", "Jobs", "Bloggers", "18+ Actress", "Others"]
 CATEGORIES: list[str] = REAL_CATEGORIES + ["🎲 Random"]
 
 CATEGORY_IMAGES: dict[str, list[str]] = {
@@ -19,6 +19,7 @@ CATEGORY_IMAGES: dict[str, list[str]] = {
     "Jobs":        [f"images/jobs_{i}.jpg" for i in range(1, 10)],
     "Bloggers":    [f"images/bloggers_{i}.jpg" for i in range(1, 11)],
     "18+ Actress": [f"images/actress_{i}.jpg" for i in range(1, 8)],
+    "Others":      [f"images/others_{i}.jpg"  for i in range(1, 29)],
 }
 
 MIN_PLAYERS: int = 1  # test uchun, keyinchalik 4 ga qaytaring
