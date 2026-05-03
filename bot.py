@@ -373,7 +373,7 @@ async def cmd_groupsub(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     group_plans = {k: v for k, v in PLANS.items() if v["group"]}
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"⭐ {p['stars']} Stars — {p['label']}", callback_data=f"buy_{k}_{chat.id}")]
+        [InlineKeyboardButton(f"⭐ {p['stars']} Stars — {p['label']}", callback_data=f"buy_{k}")]
         for k, p in group_plans.items()
     ])
     await update.message.reply_text(
@@ -616,7 +616,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 # ─── payment handlers ────────────────────────────────────────────────────────
 
 async def _on_buy(query, context, user, data: str) -> None:
-    # data = "plan_key" yoki "plan_key_chatid" (guruh uchun)
+    # data = "plan_key" yoki "gplan_key_chatid" (guruh uchun)
     parts = data.split("_", 1)
     plan_key = parts[0]
     chat_id_override = int(parts[1]) if len(parts) > 1 else None
@@ -625,15 +625,29 @@ async def _on_buy(query, context, user, data: str) -> None:
     if not plan:
         await query.answer()
         return
-    if query.message.chat.type != ChatType.PRIVATE:
-        await query.answer("To'lov faqat shaxsiy chatda!", show_alert=True)
-        return
-    await query.answer()
 
-    payload = f"grp_{chat_id_override}_{plan_key}" if chat_id_override else f"sub_{plan_key}"
+    is_group_plan = plan.get("group", False)
+
+    # Guruh obunasi — invoice guruhda ko'rsatiladi
+    if is_group_plan:
+        if query.message.chat.type == ChatType.PRIVATE:
+            await query.answer("Guruh obunasi guruhda amalga oshiriladi!", show_alert=True)
+            return
+        await query.answer()
+        invoice_chat = query.message.chat_id
+        payload = f"grp_{invoice_chat}_{plan_key}"
+    else:
+        # Shaxsiy obuna — faqat private chatda
+        if query.message.chat.type != ChatType.PRIVATE:
+            await query.answer("Shaxsiy obuna faqat private chatda!", show_alert=True)
+            return
+        await query.answer()
+        invoice_chat = user.id
+        payload = f"sub_{plan_key}"
+
     try:
         await context.bot.send_invoice(
-            chat_id=user.id,
+            chat_id=invoice_chat,
             title=f"Shpion Bot — {plan['label']}",
             description=f"{plan['desc']}\n\n⚠️ Stars yetarli bo'lmasa: Telegram → Settings → Stars",
             payload=payload,
