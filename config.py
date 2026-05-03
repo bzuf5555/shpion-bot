@@ -10,7 +10,8 @@ OWNER_ID: int = int(os.getenv("OWNER_ID", "0"))
 # Misol: postgresql://user:password@localhost:5432/shpion
 DATABASE_URL: str = os.getenv("DATABASE_URL", "")
 
-CATEGORIES: list[str] = ["Cars", "Watches", "Jobs", "Bloggers", "18+ Actress"]
+REAL_CATEGORIES: list[str] = ["Cars", "Watches", "Jobs", "Bloggers", "18+ Actress"]
+CATEGORIES: list[str] = REAL_CATEGORIES + ["🎲 Random"]
 
 CATEGORY_IMAGES: dict[str, list[str]] = {
     "Cars":        [f"images/cars_{i}.jpg" for i in range(1, 11)],

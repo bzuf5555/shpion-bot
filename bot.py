@@ -7,7 +7,7 @@ from telegram.constants import ChatType, ChatMemberStatus
 from telegram.error import BadRequest, Forbidden
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 
-from config import BOT_TOKEN, CATEGORIES, CATEGORY_IMAGES, MIN_PLAYERS, MAX_PLAYERS, OWNER_ID
+from config import BOT_TOKEN, CATEGORIES, CATEGORY_IMAGES, MIN_PLAYERS, MAX_PLAYERS, OWNER_ID, REAL_CATEGORIES
 from game import GameState, get_game, save_state, load_state
 
 # Har bir guruh uchun alohida minimum o'yinchi soni
@@ -275,7 +275,15 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 async def _on_category(query, game: GameState, category: str) -> None:
     if game.state != "category":
         return
-    game.category = category
+
+    if category == "🎲 Random":
+        chosen = random.choice(REAL_CATEGORIES)
+        display = f"🎲 Random → {chosen}"
+    else:
+        chosen = category
+        display = category
+
+    game.category = chosen
     game.state = "spies"
     save_state()
 
@@ -284,7 +292,7 @@ async def _on_category(query, game: GameState, category: str) -> None:
         [InlineKeyboardButton(str(i), callback_data=f"spy_{i}") for i in range(6, 10)],
     ]
     await query.edit_message_text(
-        f"Kategoriya: {category}\nAyg'oqchilar sonini tanlang (1–9):",
+        f"Kategoriya: {display}\nAyg'oqchilar sonini tanlang (1–9):",
         reply_markup=InlineKeyboardMarkup(rows),
     )
 
