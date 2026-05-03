@@ -142,6 +142,19 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await update.message.reply_text("\n".join(lines))
 
 
+async def cmd_owner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat = update.effective_chat
+    if chat.type == ChatType.PRIVATE:
+        return
+    admins = await chat.get_administrators()
+    owner = next((m for m in admins if m.status == ChatMemberStatus.OWNER), None)
+    if owner:
+        name = f"@{owner.user.username}" if owner.user.username else owner.user.full_name
+        await update.message.reply_text(f"Guruh egasi: {name}")
+    else:
+        await update.message.reply_text("Guruh egasi topilmadi.")
+
+
 async def cmd_setmin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat = update.effective_chat
     if chat.type == ChatType.PRIVATE:
@@ -399,6 +412,7 @@ def main() -> None:
     app.add_handler(CommandHandler("setmin", cmd_setmin))
     app.add_handler(CommandHandler("reveal", cmd_reveal))
     app.add_handler(CommandHandler("kick",   cmd_kick))
+    app.add_handler(CommandHandler("owner",  cmd_owner))
     app.add_handler(CallbackQueryHandler(on_callback))
 
     logger.info("Bot ishga tushdi...")
