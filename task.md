@@ -24,12 +24,15 @@
 - [x] Vaqt limiti — 3 daqiqa timeout, avtomatik boshlash yoki bekor qilish
 - [x] Promo kod — /addpromo (yaratish), /promo (ishlatish)
 
-## ⏳ Navbatdagi
-- [ ] Ovoz berish — kim ayg'oqchi deb ovoz berish
-- [ ] O'yin tarixi — guruh statistikasi (necha o'yin, kim necha marta ayg'oqchi)
-- [ ] Referral — do'st taklif qilgan 3 kun bonus oladi
-- [ ] Obuna eslatmasi — tugashidan 1 kun oldin DM
-- [ ] Guruh obunasi — guruh egasi to'laydi, hammasi bepul o'ynaydi
-- [ ] Promo kod statistikasi — kim qancha ishlatgan
-- [ ] Statistika panel — /stats (owner): foydalanuvchilar, obunalar, daromad
+## ✅ Bajarildi (qo'shimcha 2)
+- [x] O'yin tarixi — game_history jadvalida saqlanadi
+- [x] /mystats — shaxsiy statistika (o'yinlar, ayg'oqchi bo'lish)
+- [x] /groupstats — guruh reytingi (top 10)
+- [x] Referral — /ref havola, birinchi to'lovdan keyin referrer 3 kun bonus
+- [x] Guruh obunasi — /groupsub, butun guruh uchun Stars bilan to'lov
+- [x] /stats (owner) — foydalanuvchilar, obunalar, daromad
+- [x] Payment tracking — barcha to'lovlar saqlanadi
+
+## ⏳ Qolgan tasklar
+- [ ] Ovoz berish — kim ayg'oqchi deb ovoz berish (o'yin ichida)
 - [ ] Ko'p til — UZ / RU / EN (foydalanuvchi tanlaydi)

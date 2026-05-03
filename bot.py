@@ -12,7 +12,14 @@ from config import BOT_TOKEN, CATEGORIES, CATEGORY_IMAGES, MIN_PLAYERS, MAX_PLAY
 
 JOIN_TIMEOUT = 180  # 3 daqiqa (soniyada)
 from game import GameState, get_game, save_state, load_state
-from subscriptions import PLANS, add_subscription, get_expiry, is_subscribed, create_promo, use_promo, get_expiring_soon
+from subscriptions import (
+    PLANS, add_subscription, get_expiry, is_subscribed,
+    create_promo, use_promo, get_expiring_soon,
+    is_group_subscribed, add_group_subscription, get_group_expiry,
+    track_game, get_user_stats, get_group_leaderboard,
+    add_referral, get_referrer, claim_referral_bonus,
+    record_payment, get_global_stats,
+)
 
 # Har bir guruh uchun alohida minimum o'yinchi soni
 _chat_min: dict[int, int] = {}
@@ -99,9 +106,18 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
 
     if chat.type == ChatType.PRIVATE:
-        if context.args and context.args[0] == "subscribe":
-            await _subscribe_menu(update, context)
-            return
+        if context.args:
+            arg = context.args[0]
+            if arg == "subscribe":
+                await _subscribe_menu(update, context)
+                return
+            if arg.startswith("ref_"):
+                try:
+                    referrer_id = int(arg[4:])
+                    if referrer_id != user.id:
+                        add_referral(referrer_id, user.id)
+                except ValueError:
+                    pass
         await update.message.reply_text(
             "Assalomu alaykum! Men guruh o'yini botiman.\n"
             "Guruhga qo'shib, /start buyrug'ini yuboring."
@@ -109,7 +125,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     # Obuna tekshiruvi (owner uchun kerak emas)
-    if not _is_owner(user.id) and not is_subscribed(user.id):
+    if not _is_owner(user.id) and not is_subscribed(user.id) and not is_group_subscribed(chat.id):
         bot_username = (await context.bot.get_me()).username
         keyboard = InlineKeyboardMarkup([[
             InlineKeyboardButton(
@@ -214,6 +230,91 @@ async def cmd_promo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"Obuna: {plan['label']}\n"
             f"Tugash sanasi: {expires.strftime('%d.%m.%Y')}"
         )
+
+
+async def cmd_ref(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    bot_username = (await context.bot.get_me()).username
+    link = f"https://t.me/{bot_username}?start=ref_{user.id}"
+    await update.message.reply_text(
+        f"🔗 Sizning referral havolangiz:\n{link}\n\n"
+        f"Do'stingiz bu havola orqali botga kirib, obuna olsa — sizga 3 kunlik BEPUL obuna qo'shiladi!"
+    )
+
+
+async def cmd_mystats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    s = get_user_stats(user.id)
+    expiry = get_expiry(user.id)
+
+    lines = [f"📊 {user.first_name} statistikasi:"]
+    lines.append(f"O'yinlar: {s['games']} ta")
+    lines.append(f"Ayg'oqchi bo'lganlar: {s['as_spy']} ta")
+    if expiry and expiry > datetime.utcnow():
+        lines.append(f"Obuna: {expiry.strftime('%d.%m.%Y')} gacha")
+    elif _is_owner(user.id):
+        lines.append("Obuna: Cheksiz (owner)")
+    else:
+        lines.append("Obuna: Yo'q")
+    await update.message.reply_text("\n".join(lines))
+
+
+async def cmd_groupstats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat = update.effective_chat
+    if chat.type == ChatType.PRIVATE:
+        await update.message.reply_text("Bu buyruq faqat guruhda ishlaydi.")
+        return
+    rows = get_group_leaderboard(chat.id)
+    if not rows:
+        await update.message.reply_text("Hali bu guruhda o'yin o'ynalmagan.")
+        return
+    lines = ["🏆 Guruh reytingi (top 10):"]
+    for i, (name, games, spy) in enumerate(rows, 1):
+        lines.append(f"{i}. {name} — {games} o'yin, {spy} marta ayg'oqchi")
+    grp_exp = get_group_expiry(chat.id)
+    if grp_exp and grp_exp > datetime.utcnow():
+        lines.append(f"\n🔑 Guruh obunasi: {grp_exp.strftime('%d.%m.%Y')} gacha")
+    await update.message.reply_text("\n".join(lines))
+
+
+async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_owner(update.effective_user.id):
+        await update.message.reply_text("Bu buyruq faqat bot egasi uchun.")
+        return
+    s = get_global_stats()
+    await update.message.reply_text(
+        f"📈 Bot statistikasi:\n"
+        f"Foydalanuvchilar: {s['users']} ta\n"
+        f"Faol obunalar: {s['active_sub']} ta\n"
+        f"Faol guruh obunalari: {s['active_grp']} ta\n"
+        f"Jami Stars daromad: ⭐ {s['total_stars']}"
+    )
+
+
+async def cmd_groupsub(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat = update.effective_chat
+    user = update.effective_user
+    if chat.type == ChatType.PRIVATE:
+        await update.message.reply_text("Bu buyruq guruhda ishlaydi.")
+        return
+    grp_exp = get_group_expiry(chat.id)
+    status = ""
+    if grp_exp and grp_exp > datetime.utcnow():
+        status = f"✅ Guruh obunasi: {grp_exp.strftime('%d.%m.%Y')} gacha\n\n"
+
+    group_plans = {k: v for k, v in PLANS.items() if v["group"]}
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"⭐ {p['stars']} Stars — {p['label']}", callback_data=f"buy_{k}_{chat.id}")]
+        for k, p in group_plans.items()
+    ])
+    await update.message.reply_text(
+        f"{status}Butun guruh uchun obuna — barcha a'zolar bepul o'ynaydi:\n\n"
+        "⭐ 25 Stars — Guruh 1 Hafta\n"
+        "⭐ 75 Stars — Guruh 1 Oy\n"
+        "⭐ 200 Stars — Guruh 6 Oy\n"
+        "⭐ 350 Stars — Guruh 1 Yil",
+        reply_markup=keyboard,
+    )
 
 
 async def cmd_gift(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -432,7 +533,12 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 # ─── payment handlers ────────────────────────────────────────────────────────
 
-async def _on_buy(query, context, user, plan_key: str) -> None:
+async def _on_buy(query, context, user, data: str) -> None:
+    # data = "plan_key" yoki "plan_key_chatid" (guruh uchun)
+    parts = data.split("_", 1)
+    plan_key = parts[0]
+    chat_id_override = int(parts[1]) if len(parts) > 1 else None
+
     plan = PLANS.get(plan_key)
     if not plan:
         await query.answer()
@@ -441,15 +547,14 @@ async def _on_buy(query, context, user, plan_key: str) -> None:
         await query.answer("To'lov faqat shaxsiy chatda!", show_alert=True)
         return
     await query.answer()
+
+    payload = f"grp_{chat_id_override}_{plan_key}" if chat_id_override else f"sub_{plan_key}"
     try:
         await context.bot.send_invoice(
             chat_id=user.id,
             title=f"Shpion Bot — {plan['label']}",
-            description=(
-                f"{plan['desc']}\n\n"
-                f"⚠️ Stars yetarli bo'lmasa: Telegram → Settings → Stars"
-            ),
-            payload=f"sub_{plan_key}",
+            description=f"{plan['desc']}\n\n⚠️ Stars yetarli bo'lmasa: Telegram → Settings → Stars",
+            payload=payload,
             provider_token="",
             currency="XTR",
             prices=[LabeledPrice(plan["label"], plan["stars"])],
@@ -464,18 +569,60 @@ async def pre_checkout_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def successful_payment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    payload = update.message.successful_payment.invoice_payload  # sub_week / sub_month ...
+    payment = update.message.successful_payment
+    payload  = payment.invoice_payload   # sub_week | sub_gmonth | grp_CHATID_gweek
+    user_id  = update.effective_user.id
+
+    # Guruh obunasi: payload = grp_CHATID_PLANKEY
+    if payload.startswith("grp_"):
+        parts = payload.split("_", 2)
+        chat_id  = int(parts[1])
+        plan_key = parts[2]
+        plan = PLANS.get(plan_key)
+        if not plan:
+            return
+        record_payment(user_id, plan_key, payment.total_amount)
+        expires = add_group_subscription(chat_id, plan["days"])
+        await update.message.reply_text(
+            f"✅ Guruh obunasi faollashdi!\n"
+            f"Reja: {plan['label']}\n"
+            f"Tugash sanasi: {expires.strftime('%d.%m.%Y')}"
+        )
+        try:
+            await context.bot.send_message(
+                chat_id,
+                f"🎉 Guruh obunasi faollashdi! ({plan['label']})\n"
+                f"Barcha a'zolar endi bepul o'ynay oladi.\n"
+                f"Tugash sanasi: {expires.strftime('%d.%m.%Y')}"
+            )
+        except Exception:
+            pass
+        return
+
+    # Shaxsiy obuna
     plan_key = payload[4:]
     plan = PLANS.get(plan_key)
     if not plan:
         return
-    user_id = update.effective_user.id
+    record_payment(user_id, plan_key, payment.total_amount)
     expires = add_subscription(user_id, plan["days"])
     await update.message.reply_text(
         f"✅ To'lov qabul qilindi!\n"
         f"Obuna: {plan['label']}\n"
         f"Tugash sanasi: {expires.strftime('%d.%m.%Y')}"
     )
+
+    # Referral bonus
+    referrer_id = claim_referral_bonus(user_id)
+    if referrer_id:
+        add_subscription(referrer_id, 3)
+        try:
+            await context.bot.send_message(
+                referrer_id,
+                "🎁 Do'stingiz obuna oldi! Sizga 3 kunlik bonus obuna qo'shildi!"
+            )
+        except Exception:
+            pass
 
 
 # ─── step handlers ───────────────────────────────────────────────────────────
@@ -667,6 +814,7 @@ async def _on_end_game(query, context, game: GameState) -> None:
     if game.state == "roles" and game.spies:
         spy_names = [game.player_names[uid] for uid in game.spies]
         result = "Ayg'oqchi(lar): " + ", ".join(spy_names)
+        track_game(query.message.chat_id, game.player_names, game.spies)
     else:
         result = None
 
@@ -703,12 +851,17 @@ async def _expiry_reminder_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 async def _set_commands(app: Application) -> None:
     all_cmds = [
         BotCommand("start",     "O'yinni boshlash"),
-        BotCommand("subscribe", "Obuna olish (Stars bilan)"),
-        BotCommand("mystatus",  "Obuna holatini ko'rish"),
-        BotCommand("promo",     "Promo kod ishlatish"),
+        BotCommand("subscribe",   "Obuna olish (Stars bilan)"),
+        BotCommand("groupsub",   "Guruh obunasi olish"),
+        BotCommand("mystatus",   "Obuna holatini ko'rish"),
+        BotCommand("mystats",    "O'yin statistikangiz"),
+        BotCommand("groupstats", "Guruh reytingi"),
+        BotCommand("promo",      "Promo kod ishlatish"),
+        BotCommand("ref",        "Referral havola olish (+3 kun bonus)"),
         BotCommand("myid",      "O'zingizning Telegram ID ni ko'rish"),
         BotCommand("gift",      "[Admin] Foydalanuvchiga obuna sovg'a qilish"),
         BotCommand("addpromo",  "[Admin] Promo kod yaratish"),
+        BotCommand("stats",     "[Admin] Bot statistikasi"),
         BotCommand("cancel",    "[Admin] O'yinni bekor qilish"),
         BotCommand("status",    "[Admin] O'yin holatini ko'rish"),
         BotCommand("setmin",    "[Admin] Minimum o'yinchi sonini belgilash"),
@@ -744,9 +897,14 @@ def main() -> None:
     app.add_handler(CommandHandler("start",     cmd_start))
     app.add_handler(CommandHandler("subscribe", cmd_subscribe))
     app.add_handler(CommandHandler("mystatus",  cmd_mystatus))
-    app.add_handler(CommandHandler("promo",    cmd_promo))
-    app.add_handler(CommandHandler("addpromo", cmd_addpromo))
-    app.add_handler(CommandHandler("gift",     cmd_gift))
+    app.add_handler(CommandHandler("promo",      cmd_promo))
+    app.add_handler(CommandHandler("addpromo",   cmd_addpromo))
+    app.add_handler(CommandHandler("gift",       cmd_gift))
+    app.add_handler(CommandHandler("ref",        cmd_ref))
+    app.add_handler(CommandHandler("mystats",    cmd_mystats))
+    app.add_handler(CommandHandler("groupstats", cmd_groupstats))
+    app.add_handler(CommandHandler("groupsub",   cmd_groupsub))
+    app.add_handler(CommandHandler("stats",      cmd_stats))
     app.add_handler(CommandHandler("cancel", cmd_cancel))
     app.add_handler(CommandHandler("status",    cmd_status))
     app.add_handler(CommandHandler("setmin",    cmd_setmin))
