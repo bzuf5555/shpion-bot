@@ -142,6 +142,11 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await update.message.reply_text("\n".join(lines))
 
 
+async def cmd_myid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    await update.message.reply_text(f"Sizning Telegram ID ingiz: `{user.id}`", parse_mode="Markdown")
+
+
 async def cmd_owner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat = update.effective_chat
     if chat.type == ChatType.PRIVATE:
@@ -413,6 +418,7 @@ def main() -> None:
     app.add_handler(CommandHandler("reveal", cmd_reveal))
     app.add_handler(CommandHandler("kick",   cmd_kick))
     app.add_handler(CommandHandler("owner",  cmd_owner))
+    app.add_handler(CommandHandler("myid",   cmd_myid))
     app.add_handler(CallbackQueryHandler(on_callback))
 
     logger.info("Bot ishga tushdi...")
