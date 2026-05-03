@@ -1,5 +1,6 @@
 import logging
 import os
+import random
 
 from telegram import BotCommand, BotCommandScopeAllGroupChats, BotCommandScopeChat, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatType, ChatMemberStatus
@@ -333,6 +334,8 @@ async def _on_start_game(query, game: GameState) -> None:
 
     game.state = "roles"
     game.assign_spies()
+    images = CATEGORY_IMAGES.get(game.category, [])
+    game.selected_image = random.choice(images) if images else None
     save_state()
 
     await query.edit_message_text(
@@ -358,7 +361,7 @@ async def _on_role_reveal(query, context, game: GameState, user, target_uid: int
         if is_spy:
             await context.bot.send_message(user.id, "🕵️ Sen ayg'oqchisan!")
         else:
-            image_path = CATEGORY_IMAGES.get(game.category, "")
+            image_path = game.selected_image or ""
             if image_path and os.path.isfile(image_path):
                 with open(image_path, "rb") as img:
                     await context.bot.send_photo(

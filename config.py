@@ -12,12 +12,12 @@ DATABASE_URL: str = os.getenv("DATABASE_URL", "")
 
 CATEGORIES: list[str] = ["Cars", "Watches", "Jobs", "Bloggers", "18+ Actress"]
 
-CATEGORY_IMAGES: dict[str, str] = {
-    "Cars":        "images/cars.jpg",
-    "Watches":     "images/watches.jpg",
-    "Jobs":        "images/jobs.jpg",
-    "Bloggers":    "images/bloggers.jpg",
-    "18+ Actress": "images/actress.jpg",
+CATEGORY_IMAGES: dict[str, list[str]] = {
+    "Cars":        ["images/cars_1.jpg",     "images/cars_2.jpg",     "images/cars_3.jpg"],
+    "Watches":     ["images/watches_1.jpg",  "images/watches_2.jpg",  "images/watches_3.jpg"],
+    "Jobs":        ["images/jobs_1.jpg",     "images/jobs_2.jpg",     "images/jobs_3.jpg"],
+    "Bloggers":    ["images/bloggers_1.jpg", "images/bloggers_2.jpg", "images/bloggers_3.jpg"],
+    "18+ Actress": ["images/actress_1.jpg",  "images/actress_2.jpg",  "images/actress_3.jpg"],
 }
 
 MIN_PLAYERS: int = 1  # test uchun, keyinchalik 4 ga qaytaring

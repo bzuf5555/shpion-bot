@@ -38,6 +38,7 @@ class GameState:
     roles_received: list = field(default_factory=list) # [user_id, ...]
     join_message_id: Optional[int] = None
     join_chat_id: Optional[int] = None
+    selected_image: Optional[str] = None
 
     def add_player(self, user_id: int, name: str) -> bool:
         if user_id in self.players or len(self.players) >= MAX_PLAYERS:
@@ -63,6 +64,7 @@ class GameState:
             "roles_received": self.roles_received,
             "join_message_id": self.join_message_id,
             "join_chat_id": self.join_chat_id,
+            "selected_image": self.selected_image,
         }
 
     @classmethod
@@ -77,6 +79,7 @@ class GameState:
         gs.roles_received  = data.get("roles_received", [])
         gs.join_message_id = data.get("join_message_id")
         gs.join_chat_id    = data.get("join_chat_id")
+        gs.selected_image  = data.get("selected_image")
         return gs
 
 
