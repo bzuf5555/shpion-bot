@@ -1,0 +1,6 @@
+.env
+game_state.db
+game_state.json
+__pycache__/
+*.pyc
+*.pyo
