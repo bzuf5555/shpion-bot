@@ -167,22 +167,16 @@ async def cmd_gift(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("Bu buyruq faqat bot egasi uchun.")
         return
 
-    target = update.message.reply_to_message
-    if not target:
+    if len(context.args) < 2:
         await update.message.reply_text(
-            "Foydalanuvchining xabariga reply qilib yozing:\n"
-            "/gift week | month | half | year"
+            "Ishlatish: /gift @username week | month | half | year"
         )
         return
 
-    if not context.args:
-        await update.message.reply_text(
-            "Reja kiriting: /gift week | month | half | year"
-        )
-        return
-
-    plan_key = context.args[0].lower()
+    username = context.args[0].lstrip("@")
+    plan_key = context.args[1].lower()
     plan = PLANS.get(plan_key)
+
     if not plan:
         await update.message.reply_text(
             "Noto'g'ri reja. Quyidagilardan birini tanlang:\n"
@@ -190,18 +184,26 @@ async def cmd_gift(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
 
-    t_user = target.from_user
-    name = f"@{t_user.username}" if t_user.username else t_user.full_name
-    expires = add_subscription(t_user.id, plan["days"])
+    try:
+        chat = await context.bot.get_chat(f"@{username}")
+        user_id = chat.id
+        name = f"@{username}"
+    except Exception:
+        await update.message.reply_text(
+            f"@{username} topilmadi. Username to'g'riligini tekshiring."
+        )
+        return
+
+    expires = add_subscription(user_id, plan["days"])
 
     await update.message.reply_text(
-        f"🎁 {name} ga {plan['label']} obuna sovg'a qilindi!\n"
+        f"🎁 @{username} ga {plan['label']} obuna sovg'a qilindi!\n"
         f"Tugash sanasi: {expires.strftime('%d.%m.%Y')}"
     )
 
     try:
         await context.bot.send_message(
-            t_user.id,
+            user_id,
             f"🎁 Sizga {plan['label']} bepul obuna sovg'a qilindi!\n"
             f"Tugash sanasi: {expires.strftime('%d.%m.%Y')}"
         )
