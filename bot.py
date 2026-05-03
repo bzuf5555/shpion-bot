@@ -11,7 +11,8 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 from config import BOT_TOKEN, CATEGORIES, CATEGORY_IMAGES, MIN_PLAYERS, MAX_PLAYERS, OWNER_ID, REAL_CATEGORIES
 from game import GameState, get_game, save_state, load_state
 from subscriptions import (PLANS, add_subscription, get_expiry, is_subscribed,
-                           add_bot_admin, remove_bot_admin, is_bot_admin, get_bot_admins)
+                           add_bot_admin, remove_bot_admin, is_bot_admin, get_bot_admins,
+                           track_user, get_known_users)
 
 # Har bir guruh uchun alohida minimum o'yinchi soni
 _chat_min: dict[int, int] = {}
@@ -170,16 +171,32 @@ async def cmd_setadmin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not _is_owner(update.effective_user.id):
         await update.message.reply_text("Bu buyruq faqat bot egasi uchun.")
         return
-    target = update.message.reply_to_message
-    if not target:
+    chat = update.effective_chat
+    users = get_known_users(chat.id)
+    bot_admins = {uid for uid, _ in get_bot_admins()}
+
+    if not users:
         await update.message.reply_text(
-            "Foydalanuvchining xabariga reply qilib /setadmin yozing."
+            "Hozircha guruhda o'yinga qo'shilgan foydalanuvchilar yo'q.\n"
+            "Ular o'yinga qo'shilgandan so'ng bu buyruqdan foydalaning."
         )
         return
-    t_user = target.from_user
-    name = f"@{t_user.username}" if t_user.username else t_user.full_name
-    add_bot_admin(t_user.id, name)
-    await update.message.reply_text(f"✅ {name} bot admini qilib belgilandi.")
+
+    rows = []
+    for uid, name in users:
+        if _is_owner(uid):
+            continue
+        label = f"{'✅ ' if uid in bot_admins else ''}{name}"
+        rows.append([InlineKeyboardButton(label, callback_data=f"sadm_{uid}")])
+
+    if not rows:
+        await update.message.reply_text("Belgilash uchun foydalanuvchi topilmadi.")
+        return
+
+    await update.message.reply_text(
+        "Admin qilmoqchi bo'lgan foydalanuvchini tanlang:\n(✅ — allaqachon admin)",
+        reply_markup=InlineKeyboardMarkup(rows),
+    )
 
 
 async def cmd_removeadmin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -362,6 +379,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if data.startswith("buy_"):
         await _on_buy(query, context, user, data[4:])
         return
+    if data.startswith("sadm_"):
+        await _on_setadmin(query, user, int(data[5:]))
+        return
     await query.answer()
     if data.startswith("cat_"):
         await _on_category(query, game, data[4:])
@@ -378,6 +398,36 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 # ─── payment handlers ────────────────────────────────────────────────────────
+
+async def _on_setadmin(query, owner, target_uid: int) -> None:
+    if not _is_owner(owner.id):
+        await query.answer("Faqat bot egasi!", show_alert=True)
+        return
+    chat_id = query.message.chat_id
+    known = {uid: name for uid, name in get_known_users(chat_id)}
+    name = known.get(target_uid, str(target_uid))
+
+    if is_bot_admin(target_uid):
+        remove_bot_admin(target_uid)
+        await query.answer(f"{name} adminlikdan olib tashlandi.", show_alert=True)
+    else:
+        add_bot_admin(target_uid, name)
+        await query.answer(f"✅ {name} admin qilindi.", show_alert=True)
+
+    # Tugmalar ro'yxatini yangilash
+    bot_admins = {uid for uid, _ in get_bot_admins()}
+    rows = []
+    for uid, uname in get_known_users(chat_id):
+        if _is_owner(uid):
+            continue
+        label = f"{'✅ ' if uid in bot_admins else ''}{uname}"
+        rows.append([InlineKeyboardButton(label, callback_data=f"sadm_{uid}")])
+
+    try:
+        await query.edit_message_reply_markup(InlineKeyboardMarkup(rows))
+    except Exception:
+        pass
+
 
 async def _on_buy(query, context, user, plan_key: str) -> None:
     plan = PLANS.get(plan_key)
@@ -480,6 +530,7 @@ async def _on_join(query, game: GameState, user) -> None:
         await query.answer(msg, show_alert=True)
         return
 
+    track_user(query.message.chat_id, user.id, name)
     save_state()
     await query.edit_message_text(
         _join_text(game),

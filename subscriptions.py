@@ -26,6 +26,14 @@ def _conn() -> sqlite3.Connection:
             username TEXT
         )
     """)
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS known_users (
+            user_id  INTEGER,
+            chat_id  INTEGER,
+            name     TEXT,
+            PRIMARY KEY (user_id, chat_id)
+        )
+    """)
     con.commit()
     return con
 
@@ -101,5 +109,27 @@ def is_bot_admin(user_id: int) -> bool:
 def get_bot_admins() -> list[tuple[int, str]]:
     con = _conn()
     rows = con.execute("SELECT user_id, username FROM bot_admins").fetchall()
+    con.close()
+    return rows
+
+
+# ─── known users ─────────────────────────────────────────────────────────────
+
+def track_user(chat_id: int, user_id: int, name: str) -> None:
+    con = _conn()
+    con.execute(
+        "INSERT OR REPLACE INTO known_users (user_id, chat_id, name) VALUES (?, ?, ?)",
+        (user_id, chat_id, name)
+    )
+    con.commit()
+    con.close()
+
+
+def get_known_users(chat_id: int) -> list[tuple[int, str]]:
+    con = _conn()
+    rows = con.execute(
+        "SELECT user_id, name FROM known_users WHERE chat_id = ? ORDER BY name",
+        (chat_id,)
+    ).fetchall()
     con.close()
     return rows
