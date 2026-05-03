@@ -12,6 +12,10 @@ from config import BOT_TOKEN, CATEGORIES, CATEGORY_IMAGES, MIN_PLAYERS, MAX_PLAY
 
 JOIN_TIMEOUT = 180  # 3 daqiqa (soniyada)
 _bot_username: str = ""
+
+# Maxsus kategoriya qo'shish jarayonidagi adminlar
+# user_id -> {"name": str, "file_ids": list}
+_pending_cat: dict[int, dict] = {}
 from game import GameState, get_game, save_state, load_state
 from subscriptions import (
     PLANS, add_subscription, get_expiry, is_subscribed,
@@ -21,6 +25,7 @@ from subscriptions import (
     add_referral, get_referrer, claim_referral_bonus,
     record_payment, get_global_stats,
     get_lang, set_lang,
+    save_custom_category, load_custom_categories, delete_custom_category,
 )
 from translations import t
 
@@ -51,7 +56,12 @@ STATE_LABELS = {
 # ─── helpers ────────────────────────────────────────────────────────────────
 
 def _display_name(user) -> str:
-    return f"@{user.username}" if user.username else user.full_name
+    name = f"@{user.username}" if user.username else user.full_name
+    if _is_owner(user.id):
+        return f"👑 {name}"
+    if is_subscribed(user.id):
+        return f"⭐ {name}"
+    return name
 
 
 def _join_keyboard(player_count: int, min_players: int) -> InlineKeyboardMarkup:
@@ -146,11 +156,15 @@ async def _handle_reveal(update, user, arg: str) -> None:
             await update.message.reply_text(t("spy_caption", lang))
     else:
         image_path = game.selected_image or ""
+        caption = t("civilian_caption", lang, cat=game.category)
         if image_path and os.path.isfile(image_path):
             with open(image_path, "rb") as img:
-                await update.message.reply_photo(img, caption=t("civilian_caption", lang, cat=game.category))
+                await update.message.reply_photo(img, caption=caption)
+        elif image_path:
+            # Telegram file_id (maxsus kategoriya)
+            await update.message.reply_photo(image_path, caption=caption)
         else:
-            await update.message.reply_text(t("civilian_caption", lang, cat=game.category))
+            await update.message.reply_text(caption)
 
     game.roles_received.append(user.id)
     save_state()
@@ -292,6 +306,101 @@ async def cmd_promo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"Obuna: {plan['label']}\n"
             f"Tugash sanasi: {expires.strftime('%d.%m.%Y')}"
         )
+
+
+async def cmd_addcategory(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_owner(update.effective_user.id):
+        await update.message.reply_text("Bu buyruq faqat bot egasi uchun.")
+        return
+    if not context.args:
+        await update.message.reply_text("Ishlatish: /addcategory KATEGORIYA_NOMI")
+        return
+    name = " ".join(context.args)
+    if name in CATEGORY_IMAGES:
+        await update.message.reply_text(f"'{name}' kategoriyasi allaqachon mavjud.")
+        return
+    _pending_cat[update.effective_user.id] = {"name": name, "file_ids": []}
+    await update.message.reply_text(
+        f"'{name}' kategoriyasi uchun rasmlar yuboring.\n"
+        f"Tugatgach /donecategory yozing.\nBekor qilish: /cancelcategory"
+    )
+
+
+async def cmd_donecategory(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    uid = update.effective_user.id
+    if uid not in _pending_cat:
+        await update.message.reply_text("Avval /addcategory buyrug'ini yuboring.")
+        return
+    pending = _pending_cat.pop(uid)
+    if not pending["file_ids"]:
+        await update.message.reply_text("Hech qanday rasm qo'shilmadi.")
+        return
+    name = pending["name"]
+    fids = pending["file_ids"]
+    save_custom_category(name, fids)
+    REAL_CATEGORIES.append(name)
+    CATEGORIES.insert(-1, name)
+    CATEGORY_IMAGES[name] = fids
+    await update.message.reply_text(
+        f"✅ '{name}' kategoriyasi {len(fids)} ta rasm bilan qo'shildi!"
+    )
+
+
+async def cmd_cancelcategory(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    uid = update.effective_user.id
+    if uid in _pending_cat:
+        name = _pending_cat.pop(uid)["name"]
+        await update.message.reply_text(f"'{name}' kategoriyasi bekor qilindi.")
+    else:
+        await update.message.reply_text("Faol kategoriya yo'q.")
+
+
+async def cmd_delcategory(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_owner(update.effective_user.id):
+        await update.message.reply_text("Bu buyruq faqat bot egasi uchun.")
+        return
+    if not context.args:
+        await update.message.reply_text("Ishlatish: /delcategory KATEGORIYA_NOMI")
+        return
+    name = " ".join(context.args)
+    built_in = {"Cars", "Watches", "Jobs", "Bloggers", "18+ Actress", "Others"}
+    if name in built_in:
+        await update.message.reply_text("Standart kategoriyalarni o'chirib bo'lmaydi.")
+        return
+    if name not in CATEGORY_IMAGES:
+        await update.message.reply_text(f"'{name}' kategoriyasi topilmadi.")
+        return
+    delete_custom_category(name)
+    REAL_CATEGORIES.remove(name)
+    CATEGORIES.remove(name)
+    del CATEGORY_IMAGES[name]
+    await update.message.reply_text(f"✅ '{name}' kategoriyasi o'chirildi.")
+
+
+async def cmd_mycategories(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_owner(update.effective_user.id):
+        await update.message.reply_text("Bu buyruq faqat bot egasi uchun.")
+        return
+    custom = load_custom_categories()
+    if not custom:
+        await update.message.reply_text("Maxsus kategoriyalar yo'q.")
+        return
+    lines = ["📋 Maxsus kategoriyalar:"]
+    for name, imgs in custom:
+        lines.append(f"• {name} — {len(imgs)} ta rasm")
+    await update.message.reply_text("\n".join(lines))
+
+
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    uid = update.effective_user.id
+    if uid not in _pending_cat:
+        return
+    photo = update.message.photo[-1]
+    _pending_cat[uid]["file_ids"].append(photo.file_id)
+    count = len(_pending_cat[uid]["file_ids"])
+    await update.message.reply_text(
+        f"✅ Rasm qo'shildi ({count} ta). Yana yuboring yoki /donecategory"
+    )
 
 
 async def cmd_language(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1044,8 +1153,12 @@ async def _set_commands(app: Application) -> None:
         BotCommand("language",   "Tilni o'zgartirish / Change language"),
         BotCommand("myid",      "O'zingizning Telegram ID ni ko'rish"),
         BotCommand("gift",      "[Admin] Foydalanuvchiga obuna sovg'a qilish"),
-        BotCommand("addpromo",  "[Admin] Promo kod yaratish"),
-        BotCommand("stats",     "[Admin] Bot statistikasi"),
+        BotCommand("addpromo",      "[Admin] Promo kod yaratish"),
+        BotCommand("stats",         "[Admin] Bot statistikasi"),
+        BotCommand("addcategory",   "[Admin] Yangi kategoriya qo'shish"),
+        BotCommand("donecategory",  "[Admin] Kategoriya rasmlarini saqlash"),
+        BotCommand("delcategory",   "[Admin] Kategoriya o'chirish"),
+        BotCommand("mycategories",  "[Admin] Maxsus kategoriyalar ro'yxati"),
         BotCommand("cancel",    "[Admin] O'yinni bekor qilish"),
         BotCommand("status",    "[Admin] O'yin holatini ko'rish"),
         BotCommand("setmin",    "[Admin] Minimum o'yinchi sonini belgilash"),
@@ -1072,6 +1185,13 @@ def main() -> None:
 
     load_state()
 
+    # Maxsus kategoriyalarni yuklash
+    for cat_name, file_ids in load_custom_categories():
+        if cat_name not in CATEGORY_IMAGES:
+            REAL_CATEGORIES.append(cat_name)
+            CATEGORIES.insert(-1, cat_name)
+            CATEGORY_IMAGES[cat_name] = file_ids
+
     app = (
         Application.builder()
         .token(BOT_TOKEN)
@@ -1089,7 +1209,13 @@ def main() -> None:
     app.add_handler(CommandHandler("mystats",    cmd_mystats))
     app.add_handler(CommandHandler("groupstats", cmd_groupstats))
     app.add_handler(CommandHandler("groupsub",   cmd_groupsub))
-    app.add_handler(CommandHandler("stats",      cmd_stats))
+    app.add_handler(CommandHandler("stats",         cmd_stats))
+    app.add_handler(CommandHandler("addcategory",   cmd_addcategory))
+    app.add_handler(CommandHandler("donecategory",  cmd_donecategory))
+    app.add_handler(CommandHandler("cancelcategory",cmd_cancelcategory))
+    app.add_handler(CommandHandler("delcategory",   cmd_delcategory))
+    app.add_handler(CommandHandler("mycategories",  cmd_mycategories))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(CommandHandler("cancel", cmd_cancel))
     app.add_handler(CommandHandler("status",    cmd_status))
     app.add_handler(CommandHandler("setmin",    cmd_setmin))

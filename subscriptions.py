@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from datetime import datetime, timedelta
 from typing import Optional
@@ -61,6 +62,10 @@ def _conn() -> sqlite3.Connection:
         CREATE TABLE IF NOT EXISTS user_langs (
             user_id INTEGER PRIMARY KEY,
             lang    TEXT NOT NULL DEFAULT 'uz'
+        );
+        CREATE TABLE IF NOT EXISTS custom_categories (
+            name   TEXT PRIMARY KEY,
+            images TEXT NOT NULL
         );
     """)
     con.commit()
@@ -274,6 +279,32 @@ def get_lang(user_id: int) -> str:
 def set_lang(user_id: int, lang: str) -> None:
     con = _conn()
     con.execute("INSERT OR REPLACE INTO user_langs (user_id, lang) VALUES (?, ?)", (user_id, lang))
+    con.commit()
+    con.close()
+
+
+# ─── custom categories ───────────────────────────────────────────────────────
+
+def save_custom_category(name: str, file_ids: list[str]) -> None:
+    con = _conn()
+    con.execute(
+        "INSERT OR REPLACE INTO custom_categories (name, images) VALUES (?, ?)",
+        (name, json.dumps(file_ids))
+    )
+    con.commit()
+    con.close()
+
+
+def load_custom_categories() -> list[tuple[str, list[str]]]:
+    con = _conn()
+    rows = con.execute("SELECT name, images FROM custom_categories").fetchall()
+    con.close()
+    return [(name, json.loads(imgs)) for name, imgs in rows]
+
+
+def delete_custom_category(name: str) -> None:
+    con = _conn()
+    con.execute("DELETE FROM custom_categories WHERE name = ?", (name,))
     con.commit()
     con.close()
 
