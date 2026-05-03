@@ -10,7 +10,8 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 
 from config import BOT_TOKEN, CATEGORIES, CATEGORY_IMAGES, MIN_PLAYERS, MAX_PLAYERS, OWNER_ID, REAL_CATEGORIES
 from game import GameState, get_game, save_state, load_state
-from subscriptions import PLANS, add_subscription, get_expiry, is_subscribed
+from subscriptions import (PLANS, add_subscription, get_expiry, is_subscribed,
+                           add_bot_admin, remove_bot_admin, is_bot_admin, get_bot_admins)
 
 # Har bir guruh uchun alohida minimum o'yinchi soni
 _chat_min: dict[int, int] = {}
@@ -73,6 +74,9 @@ async def _is_admin(chat, user_id: int) -> bool:
 def _is_owner(user_id: int) -> bool:
     return OWNER_ID != 0 and user_id == OWNER_ID
 
+def _is_privileged(user_id: int) -> bool:
+    return _is_owner(user_id) or is_bot_admin(user_id)
+
 
 # ─── commands ────────────────────────────────────────────────────────────────
 
@@ -107,7 +111,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     # Obuna tekshiruvi (owner uchun kerak emas)
-    if not _is_owner(user.id) and not is_subscribed(user.id):
+    if not _is_privileged(user.id) and not is_subscribed(user.id):
         bot_username = (await context.bot.get_me()).username
         keyboard = InlineKeyboardMarkup([[
             InlineKeyboardButton(
@@ -160,6 +164,53 @@ async def cmd_mystatus(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text(
             f"✅ Obuna faol\nTugash sanasi: {expiry.strftime('%d.%m.%Y')}"
         )
+
+
+async def cmd_setadmin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_owner(update.effective_user.id):
+        await update.message.reply_text("Bu buyruq faqat bot egasi uchun.")
+        return
+    target = update.message.reply_to_message
+    if not target:
+        await update.message.reply_text(
+            "Foydalanuvchining xabariga reply qilib /setadmin yozing."
+        )
+        return
+    t_user = target.from_user
+    name = f"@{t_user.username}" if t_user.username else t_user.full_name
+    add_bot_admin(t_user.id, name)
+    await update.message.reply_text(f"✅ {name} bot admini qilib belgilandi.")
+
+
+async def cmd_removeadmin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_owner(update.effective_user.id):
+        await update.message.reply_text("Bu buyruq faqat bot egasi uchun.")
+        return
+    target = update.message.reply_to_message
+    if not target:
+        await update.message.reply_text(
+            "Foydalanuvchining xabariga reply qilib /removeadmin yozing."
+        )
+        return
+    t_user = target.from_user
+    name = f"@{t_user.username}" if t_user.username else t_user.full_name
+    removed = remove_bot_admin(t_user.id)
+    if removed:
+        await update.message.reply_text(f"✅ {name} bot adminlikdan olib tashlandi.")
+    else:
+        await update.message.reply_text(f"{name} adminlar ro'yxatida yo'q edi.")
+
+
+async def cmd_admins(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_owner(update.effective_user.id):
+        await update.message.reply_text("Bu buyruq faqat bot egasi uchun.")
+        return
+    admins = get_bot_admins()
+    if not admins:
+        await update.message.reply_text("Bot adminlari yo'q.")
+        return
+    lines = [f"• {name} (ID: {uid})" for uid, name in admins]
+    await update.message.reply_text("Bot adminlari:\n" + "\n".join(lines))
 
 
 async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -563,7 +614,10 @@ def main() -> None:
     app.add_handler(CommandHandler("start",     cmd_start))
     app.add_handler(CommandHandler("subscribe", cmd_subscribe))
     app.add_handler(CommandHandler("mystatus",  cmd_mystatus))
-    app.add_handler(CommandHandler("cancel",    cmd_cancel))
+    app.add_handler(CommandHandler("setadmin",    cmd_setadmin))
+    app.add_handler(CommandHandler("removeadmin", cmd_removeadmin))
+    app.add_handler(CommandHandler("admins",      cmd_admins))
+    app.add_handler(CommandHandler("cancel",      cmd_cancel))
     app.add_handler(CommandHandler("status",    cmd_status))
     app.add_handler(CommandHandler("setmin",    cmd_setmin))
     app.add_handler(CommandHandler("reveal",    cmd_reveal))
