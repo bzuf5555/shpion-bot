@@ -16,7 +16,7 @@ CATEGORY_IMAGES: dict[str, list[str]] = {
     "Cars":        [f"images/cars_{i}.jpg" for i in range(1, 11)],
     "Watches":     [f"images/watches_{i}.jpg" for i in range(1, 10)],
     "Jobs":        [f"images/jobs_{i}.jpg" for i in range(1, 10)],
-    "Bloggers":    ["images/bloggers_1.jpg", "images/bloggers_2.jpg", "images/bloggers_3.jpg"],
+    "Bloggers":    [f"images/bloggers_{i}.jpg" for i in range(1, 11)],
     "18+ Actress": [f"images/actress_{i}.jpg" for i in range(1, 8)],
 }
 
