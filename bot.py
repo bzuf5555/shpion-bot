@@ -1,7 +1,7 @@
 import logging
 import os
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import BotCommand, BotCommandScopeAllGroupChats, BotCommandScopeChat, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatType, ChatMemberStatus
 from telegram.error import BadRequest, Forbidden
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
@@ -405,6 +405,34 @@ async def _on_end_game(query, game: GameState) -> None:
     await query.edit_message_text(text)
 
 
+# ─── bot commands setup ──────────────────────────────────────────────────────
+
+async def _set_commands(app: Application) -> None:
+    public = [
+        BotCommand("start", "O'yinni boshlash"),
+        BotCommand("owner", "Guruh egasini ko'rish"),
+        BotCommand("myid",  "O'zingizning Telegram ID ni ko'rish"),
+    ]
+    owner_extra = [
+        BotCommand("cancel", "[Admin] O'yinni bekor qilish"),
+        BotCommand("status", "[Admin] O'yin holatini ko'rish"),
+        BotCommand("setmin", "[Admin] Minimum o'yinchi sonini belgilash"),
+        BotCommand("reveal", "[Admin] Ayg'oqchini oshkor qilish"),
+        BotCommand("kick",   "[Admin] O'yinchini chiqarish"),
+    ]
+
+    await app.bot.set_my_commands(public, scope=BotCommandScopeAllGroupChats())
+
+    if OWNER_ID:
+        try:
+            await app.bot.set_my_commands(
+                public + owner_extra,
+                scope=BotCommandScopeChat(chat_id=OWNER_ID),
+            )
+        except Exception as e:
+            logger.warning("Owner commands set failed: %s", e)
+
+
 # ─── main ────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -413,7 +441,7 @@ def main() -> None:
 
     load_state()
 
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = Application.builder().token(BOT_TOKEN).post_init(_set_commands).build()
     app.add_handler(CommandHandler("start",  cmd_start))
     app.add_handler(CommandHandler("cancel", cmd_cancel))
     app.add_handler(CommandHandler("status", cmd_status))
