@@ -1,14 +1,16 @@
 import logging
 import os
 import random
+from datetime import datetime
 
-from telegram import BotCommand, BotCommandScopeAllGroupChats, BotCommandScopeChat, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import BotCommand, BotCommandScopeAllGroupChats, BotCommandScopeChat, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice, Update
 from telegram.constants import ChatType, ChatMemberStatus
 from telegram.error import BadRequest, Forbidden
-from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, PreCheckoutQueryHandler, filters
 
 from config import BOT_TOKEN, CATEGORIES, CATEGORY_IMAGES, MIN_PLAYERS, MAX_PLAYERS, OWNER_ID, REAL_CATEGORIES
 from game import GameState, get_game, save_state, load_state
+from subscriptions import PLANS, add_subscription, get_expiry, is_subscribed
 
 # Har bir guruh uchun alohida minimum o'yinchi soni
 _chat_min: dict[int, int] = {}
@@ -74,12 +76,47 @@ def _is_owner(user_id: int) -> bool:
 
 # ─── commands ────────────────────────────────────────────────────────────────
 
+async def _subscribe_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"⭐ {p['stars']} Stars — {p['label']}", callback_data=f"buy_{k}")]
+        for k, p in PLANS.items()
+    ])
+    await update.message.reply_text(
+        "Obuna rejasini tanlang:\n\n"
+        "⭐ 5 Stars — 1 Hafta\n"
+        "⭐ 15 Stars — 1 Oy\n"
+        "⭐ 50 Stars — 6 Oy\n"
+        "⭐ 100 Stars — 1 Yil",
+        reply_markup=keyboard,
+    )
+
+
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat = update.effective_chat
+    user = update.effective_user
+
     if chat.type == ChatType.PRIVATE:
+        if context.args and context.args[0] == "subscribe":
+            await _subscribe_menu(update, context)
+            return
         await update.message.reply_text(
             "Assalomu alaykum! Men guruh o'yini botiman.\n"
             "Guruhga qo'shib, /start buyrug'ini yuboring."
+        )
+        return
+
+    # Obuna tekshiruvi (owner uchun kerak emas)
+    if not _is_owner(user.id) and not is_subscribed(user.id):
+        bot_username = (await context.bot.get_me()).username
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton(
+                "⭐ Obuna olish",
+                url=f"https://t.me/{bot_username}?start=subscribe"
+            )
+        ]])
+        await update.message.reply_text(
+            f"{_display_name(user)}, o'yin boshlash uchun obuna kerak!",
+            reply_markup=keyboard,
         )
         return
 
@@ -94,6 +131,34 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         [[InlineKeyboardButton(cat, callback_data=f"cat_{cat}")] for cat in CATEGORIES]
     )
     await update.message.reply_text("Kategoriyani tanlang:", reply_markup=keyboard)
+
+
+async def cmd_subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_chat.type != ChatType.PRIVATE:
+        await update.message.reply_text("Obuna olish uchun botga shaxsiy xabar yuboring.")
+        return
+    if _is_owner(update.effective_user.id):
+        await update.message.reply_text("Siz bot egasisiz — obuna kerak emas.")
+        return
+    await _subscribe_menu(update, context)
+
+
+async def cmd_mystatus(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    if _is_owner(user.id):
+        await update.message.reply_text("Siz bot egasisiz — cheksiz kirish.")
+        return
+    expiry = get_expiry(user.id)
+    if not expiry or expiry < datetime.utcnow():
+        bot_username = (await context.bot.get_me()).username
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton("⭐ Obuna olish", url=f"https://t.me/{bot_username}?start=subscribe")
+        ]])
+        await update.message.reply_text("Faol obunangiz yo'q.", reply_markup=keyboard)
+    else:
+        await update.message.reply_text(
+            f"✅ Obuna faol\nTugash sanasi: {expiry.strftime('%d.%m.%Y')}"
+        )
 
 
 async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -244,7 +309,10 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     game = get_game(chat.id)
     data: str = query.data
 
-    if data.startswith("cat_"):
+    if data.startswith("buy_"):
+        await _on_buy(query, context, user, data[4:])
+        return
+    elif data.startswith("cat_"):
         await _on_category(query, game, data[4:])
     elif data.startswith("spy_"):
         await _on_spy_count(query, game, int(data[4:]))
@@ -256,6 +324,45 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await _on_role_reveal(query, context, game, user, int(data[5:]))
     elif data == "end_game":
         await _on_end_game(query, game)
+
+
+# ─── payment handlers ────────────────────────────────────────────────────────
+
+async def _on_buy(query, context, user, plan_key: str) -> None:
+    plan = PLANS.get(plan_key)
+    if not plan:
+        return
+    if query.message.chat.type != ChatType.PRIVATE:
+        await query.answer("To'lov faqat shaxsiy chatda amalga oshiriladi!", show_alert=True)
+        return
+    await query.answer()
+    await context.bot.send_invoice(
+        chat_id=user.id,
+        title=f"Shpion Bot — {plan['label']}",
+        description=plan["desc"],
+        payload=f"sub_{plan_key}",
+        currency="XTR",
+        prices=[LabeledPrice(plan["label"], plan["stars"])],
+    )
+
+
+async def pre_checkout_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.pre_checkout_query.answer(ok=True)
+
+
+async def successful_payment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    payload = update.message.successful_payment.invoice_payload  # sub_week / sub_month ...
+    plan_key = payload[4:]
+    plan = PLANS.get(plan_key)
+    if not plan:
+        return
+    user_id = update.effective_user.id
+    expires = add_subscription(user_id, plan["days"])
+    await update.message.reply_text(
+        f"✅ To'lov qabul qilindi!\n"
+        f"Obuna: {plan['label']}\n"
+        f"Tugash sanasi: {expires.strftime('%d.%m.%Y')}"
+    )
 
 
 # ─── step handlers ───────────────────────────────────────────────────────────
@@ -413,13 +520,15 @@ async def _on_end_game(query, game: GameState) -> None:
 
 async def _set_commands(app: Application) -> None:
     all_cmds = [
-        BotCommand("start",  "O'yinni boshlash"),
-        BotCommand("myid",   "O'zingizning Telegram ID ni ko'rish"),
-        BotCommand("cancel", "[Admin] O'yinni bekor qilish"),
-        BotCommand("status", "[Admin] O'yin holatini ko'rish"),
-        BotCommand("setmin", "[Admin] Minimum o'yinchi sonini belgilash"),
-        BotCommand("reveal", "[Admin] Ayg'oqchini oshkor qilish"),
-        BotCommand("kick",   "[Admin] O'yinchini chiqarish"),
+        BotCommand("start",     "O'yinni boshlash"),
+        BotCommand("subscribe", "Obuna olish (Stars bilan)"),
+        BotCommand("mystatus",  "Obuna holatini ko'rish"),
+        BotCommand("myid",      "O'zingizning Telegram ID ni ko'rish"),
+        BotCommand("cancel",    "[Admin] O'yinni bekor qilish"),
+        BotCommand("status",    "[Admin] O'yin holatini ko'rish"),
+        BotCommand("setmin",    "[Admin] Minimum o'yinchi sonini belgilash"),
+        BotCommand("reveal",    "[Admin] Ayg'oqchini oshkor qilish"),
+        BotCommand("kick",      "[Admin] O'yinchini chiqarish"),
     ]
     await app.bot.set_my_commands(all_cmds, scope=BotCommandScopeAllGroupChats())
 
@@ -442,13 +551,17 @@ def main() -> None:
     load_state()
 
     app = Application.builder().token(BOT_TOKEN).post_init(_set_commands).build()
-    app.add_handler(CommandHandler("start",  cmd_start))
-    app.add_handler(CommandHandler("cancel", cmd_cancel))
-    app.add_handler(CommandHandler("status", cmd_status))
-    app.add_handler(CommandHandler("setmin", cmd_setmin))
-    app.add_handler(CommandHandler("reveal", cmd_reveal))
-    app.add_handler(CommandHandler("kick",   cmd_kick))
-    app.add_handler(CommandHandler("myid",   cmd_myid))
+    app.add_handler(CommandHandler("start",     cmd_start))
+    app.add_handler(CommandHandler("subscribe", cmd_subscribe))
+    app.add_handler(CommandHandler("mystatus",  cmd_mystatus))
+    app.add_handler(CommandHandler("cancel",    cmd_cancel))
+    app.add_handler(CommandHandler("status",    cmd_status))
+    app.add_handler(CommandHandler("setmin",    cmd_setmin))
+    app.add_handler(CommandHandler("reveal",    cmd_reveal))
+    app.add_handler(CommandHandler("kick",      cmd_kick))
+    app.add_handler(CommandHandler("myid",      cmd_myid))
+    app.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
+    app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
     app.add_handler(CallbackQueryHandler(on_callback))
 
     logger.info("Bot ishga tushdi...")
