@@ -151,18 +151,6 @@ async def cmd_myid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(f"Sizning Telegram ID ingiz: `{user.id}`", parse_mode="Markdown")
 
 
-async def cmd_owner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    chat = update.effective_chat
-    if chat.type == ChatType.PRIVATE:
-        return
-    admins = await chat.get_administrators()
-    owner = next((m for m in admins if m.status == ChatMemberStatus.OWNER), None)
-    if owner:
-        name = f"@{owner.user.username}" if owner.user.username else owner.user.full_name
-        await update.message.reply_text(f"Guruh egasi: {name}")
-    else:
-        await update.message.reply_text("Guruh egasi topilmadi.")
-
 
 async def cmd_setmin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat = update.effective_chat
@@ -424,25 +412,21 @@ async def _on_end_game(query, game: GameState) -> None:
 # ─── bot commands setup ──────────────────────────────────────────────────────
 
 async def _set_commands(app: Application) -> None:
-    public = [
-        BotCommand("start", "O'yinni boshlash"),
-        BotCommand("owner", "Guruh egasini ko'rish"),
-        BotCommand("myid",  "O'zingizning Telegram ID ni ko'rish"),
-    ]
-    owner_extra = [
+    all_cmds = [
+        BotCommand("start",  "O'yinni boshlash"),
+        BotCommand("myid",   "O'zingizning Telegram ID ni ko'rish"),
         BotCommand("cancel", "[Admin] O'yinni bekor qilish"),
         BotCommand("status", "[Admin] O'yin holatini ko'rish"),
         BotCommand("setmin", "[Admin] Minimum o'yinchi sonini belgilash"),
         BotCommand("reveal", "[Admin] Ayg'oqchini oshkor qilish"),
         BotCommand("kick",   "[Admin] O'yinchini chiqarish"),
     ]
-
-    await app.bot.set_my_commands(public, scope=BotCommandScopeAllGroupChats())
+    await app.bot.set_my_commands(all_cmds, scope=BotCommandScopeAllGroupChats())
 
     if OWNER_ID:
         try:
             await app.bot.set_my_commands(
-                public + owner_extra,
+                all_cmds,
                 scope=BotCommandScopeChat(chat_id=OWNER_ID),
             )
         except Exception as e:
@@ -464,7 +448,6 @@ def main() -> None:
     app.add_handler(CommandHandler("setmin", cmd_setmin))
     app.add_handler(CommandHandler("reveal", cmd_reveal))
     app.add_handler(CommandHandler("kick",   cmd_kick))
-    app.add_handler(CommandHandler("owner",  cmd_owner))
     app.add_handler(CommandHandler("myid",   cmd_myid))
     app.add_handler(CallbackQueryHandler(on_callback))
 
