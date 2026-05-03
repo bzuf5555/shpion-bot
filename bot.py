@@ -328,10 +328,10 @@ async def cmd_groupsub(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     ])
     await update.message.reply_text(
         f"{status}Butun guruh uchun obuna — barcha a'zolar bepul o'ynaydi:\n\n"
-        "⭐ 25 Stars — Guruh 1 Hafta\n"
-        "⭐ 75 Stars — Guruh 1 Oy\n"
-        "⭐ 200 Stars — Guruh 6 Oy\n"
-        "⭐ 350 Stars — Guruh 1 Yil",
+        "⭐ 15 Stars — Guruh 1 Hafta\n"
+        "⭐ 30 Stars — Guruh 1 Oy\n"
+        "⭐ 100 Stars — Guruh 6 Oy\n"
+        "⭐ 150 Stars — Guruh 1 Yil",
         reply_markup=keyboard,
     )
 

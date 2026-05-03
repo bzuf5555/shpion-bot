@@ -9,10 +9,10 @@ PLANS: dict[str, dict] = {
     "month":  {"stars": 15,  "days": 30,  "label": "1 Oy",          "desc": "30 kunlik shaxsiy obuna",   "group": False},
     "half":   {"stars": 50,  "days": 180, "label": "6 Oy",          "desc": "180 kunlik shaxsiy obuna",  "group": False},
     "year":   {"stars": 100, "days": 365, "label": "1 Yil",         "desc": "365 kunlik shaxsiy obuna",  "group": False},
-    "gweek":  {"stars": 25,  "days": 7,   "label": "Guruh 1 Hafta", "desc": "Butun guruh uchun 7 kun",   "group": True},
-    "gmonth": {"stars": 75,  "days": 30,  "label": "Guruh 1 Oy",   "desc": "Butun guruh uchun 30 kun",  "group": True},
-    "ghalf":  {"stars": 200, "days": 180, "label": "Guruh 6 Oy",   "desc": "Butun guruh uchun 180 kun", "group": True},
-    "gyear":  {"stars": 350, "days": 365, "label": "Guruh 1 Yil",  "desc": "Butun guruh uchun 365 kun", "group": True},
+    "gweek":  {"stars": 15,  "days": 7,   "label": "Guruh 1 Hafta", "desc": "Butun guruh uchun 7 kun",   "group": True},
+    "gmonth": {"stars": 30,  "days": 30,  "label": "Guruh 1 Oy",   "desc": "Butun guruh uchun 30 kun",  "group": True},
+    "ghalf":  {"stars": 100, "days": 180, "label": "Guruh 6 Oy",   "desc": "Butun guruh uchun 180 kun", "group": True},
+    "gyear":  {"stars": 150, "days": 365, "label": "Guruh 1 Yil",  "desc": "Butun guruh uchun 365 kun", "group": True},
 }
 
 
