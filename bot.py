@@ -6,7 +6,7 @@ from telegram.constants import ChatType, ChatMemberStatus
 from telegram.error import BadRequest, Forbidden
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 
-from config import BOT_TOKEN, CATEGORIES, CATEGORY_IMAGES, MIN_PLAYERS, MAX_PLAYERS
+from config import BOT_TOKEN, CATEGORIES, CATEGORY_IMAGES, MIN_PLAYERS, MAX_PLAYERS, OWNER_ID
 from game import GameState, get_game, save_state, load_state
 
 # Har bir guruh uchun alohida minimum o'yinchi soni
@@ -67,6 +67,9 @@ async def _is_admin(chat, user_id: int) -> bool:
     member = await chat.get_member(user_id)
     return member.status in _ADMIN_STATUSES
 
+def _is_owner(user_id: int) -> bool:
+    return OWNER_ID != 0 and user_id == OWNER_ID
+
 
 # ─── commands ────────────────────────────────────────────────────────────────
 
@@ -104,8 +107,8 @@ async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await update.message.reply_text("Hozir hech qanday faol o'yin yo'q.")
         return
 
-    if not await _is_admin(chat, user.id):
-        await update.message.reply_text("Faqat guruh adminlari o'yinni bekor qila oladi.")
+    if not _is_owner(user.id):
+        await update.message.reply_text("Bu buyruq faqat bot egasi uchun.")
         return
 
     game.reset()
@@ -119,8 +122,8 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         return
 
     user = update.effective_user
-    if not await _is_admin(chat, user.id):
-        await update.message.reply_text("Faqat guruh adminlari bu buyruqdan foydalana oladi.")
+    if not _is_owner(user.id):
+        await update.message.reply_text("Bu buyruq faqat bot egasi uchun.")
         return
 
     game = get_game(chat.id)
@@ -164,8 +167,8 @@ async def cmd_setmin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     chat = update.effective_chat
     if chat.type == ChatType.PRIVATE:
         return
-    if not await _is_admin(chat, update.effective_user.id):
-        await update.message.reply_text("Faqat adminlar bu buyruqdan foydalana oladi.")
+    if not _is_owner(update.effective_user.id):
+        await update.message.reply_text("Bu buyruq faqat bot egasi uchun.")
         return
     if not context.args or not context.args[0].isdigit():
         await update.message.reply_text("Ishlatish: /setmin <son>  (masalan: /setmin 3)")
@@ -182,8 +185,8 @@ async def cmd_reveal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     chat = update.effective_chat
     if chat.type == ChatType.PRIVATE:
         return
-    if not await _is_admin(chat, update.effective_user.id):
-        await update.message.reply_text("Faqat adminlar bu buyruqdan foydalana oladi.")
+    if not _is_owner(update.effective_user.id):
+        await update.message.reply_text("Bu buyruq faqat bot egasi uchun.")
         return
     game = get_game(chat.id)
     if game.state != "roles" or not game.spies:
@@ -199,8 +202,8 @@ async def cmd_kick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat = update.effective_chat
     if chat.type == ChatType.PRIVATE:
         return
-    if not await _is_admin(chat, update.effective_user.id):
-        await update.message.reply_text("Faqat adminlar bu buyruqdan foydalana oladi.")
+    if not _is_owner(update.effective_user.id):
+        await update.message.reply_text("Bu buyruq faqat bot egasi uchun.")
         return
     game = get_game(chat.id)
     if game.state != "joining":

@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BOT_TOKEN: str = os.getenv("BOT_TOKEN", "")
+OWNER_ID: int = int(os.getenv("OWNER_ID", "0"))
 
 # Ixtiyoriy: PostgreSQL ulash uchun (bo'lmasa SQLite ishlatiladi)
 # Misol: postgresql://user:password@localhost:5432/shpion
