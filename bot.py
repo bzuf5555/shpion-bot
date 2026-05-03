@@ -19,7 +19,9 @@ from subscriptions import (
     track_game, get_user_stats, get_group_leaderboard,
     add_referral, get_referrer, claim_referral_bonus,
     record_payment, get_global_stats,
+    get_lang, set_lang,
 )
+from translations import t
 
 # Har bir guruh uchun alohida minimum o'yinchi soni
 _chat_min: dict[int, int] = {}
@@ -109,15 +111,8 @@ async def _subscribe_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         [InlineKeyboardButton(f"⭐ {p['stars']} Stars — {p['label']}", callback_data=f"buy_{k}")]
         for k, p in PLANS.items()
     ])
-    await update.message.reply_text(
-        "Obuna rejasini tanlang:\n\n"
-        "⭐ 5 Stars — 1 Hafta\n"
-        "⭐ 15 Stars — 1 Oy\n"
-        "⭐ 50 Stars — 6 Oy\n"
-        "⭐ 100 Stars — 1 Yil\n\n"
-        "💡 Stars yetarli bo'lmasa: Telegram → Settings → Stars",
-        reply_markup=keyboard,
-    )
+    lang = get_lang(update.effective_user.id)
+    await update.message.reply_text(t("sub_menu", lang), reply_markup=keyboard)
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -137,23 +132,19 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                         add_referral(referrer_id, user.id)
                 except ValueError:
                     pass
-        await update.message.reply_text(
-            "Assalomu alaykum! Men guruh o'yini botiman.\n"
-            "Guruhga qo'shib, /start buyrug'ini yuboring."
-        )
+        lang = get_lang(user.id)
+        await update.message.reply_text(t("start_private", lang))
         return
 
     # Obuna tekshiruvi (owner uchun kerak emas)
     if not _is_owner(user.id) and not is_subscribed(user.id) and not is_group_subscribed(chat.id):
+        lang = get_lang(user.id)
         bot_username = (await context.bot.get_me()).username
         keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton(
-                "⭐ Obuna olish",
-                url=f"https://t.me/{bot_username}?start=subscribe"
-            )
+            InlineKeyboardButton(t("sub_buy_btn", lang), url=f"https://t.me/{bot_username}?start=subscribe")
         ]])
         await update.message.reply_text(
-            f"{_display_name(user)}, o'yin boshlash uchun obuna kerak!",
+            t("sub_required", lang, name=_display_name(user)),
             reply_markup=keyboard,
         )
         return
@@ -183,20 +174,19 @@ async def cmd_subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 async def cmd_mystatus(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
+    lang = get_lang(user.id)
     if _is_owner(user.id):
-        await update.message.reply_text("Siz bot egasisiz — cheksiz kirish.")
+        await update.message.reply_text(t("status_owner", lang))
         return
     expiry = get_expiry(user.id)
     if not expiry or expiry < datetime.utcnow():
         bot_username = (await context.bot.get_me()).username
         keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton("⭐ Obuna olish", url=f"https://t.me/{bot_username}?start=subscribe")
+            InlineKeyboardButton(t("sub_buy_btn", lang), url=f"https://t.me/{bot_username}?start=subscribe")
         ]])
-        await update.message.reply_text("Faol obunangiz yo'q.", reply_markup=keyboard)
+        await update.message.reply_text(t("status_none", lang), reply_markup=keyboard)
     else:
-        await update.message.reply_text(
-            f"✅ Obuna faol\nTugash sanasi: {expiry.strftime('%d.%m.%Y')}"
-        )
+        await update.message.reply_text(t("status_active", lang, date=expiry.strftime("%d.%m.%Y")))
 
 
 async def cmd_addpromo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -251,14 +241,21 @@ async def cmd_promo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
 
 
+async def cmd_language(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🇺🇿 O'zbek",  callback_data="lang_uz")],
+        [InlineKeyboardButton("🇷🇺 Русский", callback_data="lang_ru")],
+        [InlineKeyboardButton("🇬🇧 English", callback_data="lang_en")],
+    ])
+    await update.message.reply_text(t("choose_lang"), reply_markup=keyboard)
+
+
 async def cmd_ref(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
+    lang = get_lang(user.id)
     bot_username = (await context.bot.get_me()).username
     link = f"https://t.me/{bot_username}?start=ref_{user.id}"
-    await update.message.reply_text(
-        f"🔗 Sizning referral havolangiz:\n{link}\n\n"
-        f"Do'stingiz bu havola orqali botga kirib, obuna olsa — sizga 3 kunlik BEPUL obuna qo'shiladi!"
-    )
+    await update.message.reply_text(t("ref_msg", lang, link=link))
 
 
 async def cmd_mystats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -532,6 +529,15 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     game = get_game(chat.id)
     data: str = query.data
 
+    if data.startswith("lang_"):
+        lang = data[5:]
+        set_lang(user.id, lang)
+        await query.answer(t("lang_set", lang), show_alert=True)
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+        return
     if data.startswith("buy_"):
         await _on_buy(query, context, user, data[4:])
         return
@@ -629,12 +635,11 @@ async def successful_payment_handler(update: Update, context: ContextTypes.DEFAU
     plan = PLANS.get(plan_key)
     if not plan:
         return
+    lang = get_lang(user_id)
     record_payment(user_id, plan_key, payment.total_amount)
     expires = add_subscription(user_id, plan["days"])
     await update.message.reply_text(
-        f"✅ To'lov qabul qilindi!\n"
-        f"Obuna: {plan['label']}\n"
-        f"Tugash sanasi: {expires.strftime('%d.%m.%Y')}"
+        t("payment_ok", lang, label=plan["label"], date=expires.strftime("%d.%m.%Y"))
     )
 
     # Referral bonus
@@ -642,10 +647,8 @@ async def successful_payment_handler(update: Update, context: ContextTypes.DEFAU
     if referrer_id:
         add_subscription(referrer_id, 3)
         try:
-            await context.bot.send_message(
-                referrer_id,
-                "🎁 Do'stingiz obuna oldi! Sizga 3 kunlik bonus obuna qo'shildi!"
-            )
+            rlang = get_lang(referrer_id)
+            await context.bot.send_message(referrer_id, t("ref_bonus", rlang))
         except Exception:
             pass
 
@@ -788,11 +791,12 @@ async def _on_role_reveal(query, context, game: GameState, user, target_uid: int
     if game.state != "roles":
         await query.answer("O'yin hali boshlanmagan.", show_alert=True)
         return
+    lang = get_lang(user.id)
     if user.id != target_uid:
-        await query.answer("Bu tugma siz uchun emas!", show_alert=True)
+        await query.answer(t("not_your_btn", lang), show_alert=True)
         return
     if user.id in game.roles_received:
-        await query.answer("Rolingizni allaqachon ko'rdingiz!", show_alert=True)
+        await query.answer(t("role_already", lang), show_alert=True)
         return
 
     is_spy = user.id in game.spies
@@ -801,30 +805,26 @@ async def _on_role_reveal(query, context, game: GameState, user, target_uid: int
             spy_img = "images/spy.jpg"
             if os.path.isfile(spy_img):
                 with open(spy_img, "rb") as f:
-                    await context.bot.send_photo(user.id, f, caption="🕵️ Sen ayg'oqchisan!")
+                    await context.bot.send_photo(user.id, f, caption=t("spy_caption", lang))
             else:
-                await context.bot.send_message(user.id, "🕵️ Sen ayg'oqchisan!")
+                await context.bot.send_message(user.id, t("spy_caption", lang))
         else:
             image_path = game.selected_image or ""
             if image_path and os.path.isfile(image_path):
                 with open(image_path, "rb") as img:
                     await context.bot.send_photo(
                         user.id, img,
-                        caption=f"Sizning rolingiz: {game.category} o'yinchisi 🎭"
+                        caption=t("civilian_caption", lang, cat=game.category)
                     )
             else:
                 await context.bot.send_message(
-                    user.id,
-                    f"Sizning rolingiz: {game.category} o'yinchisi 🎭"
+                    user.id, t("civilian_caption", lang, cat=game.category)
                 )
         game.roles_received.append(user.id)
         save_state()
-        await query.answer("Rolingiz shaxsiy chatga yuborildi!", show_alert=True)
+        await query.answer(t("role_sent", lang), show_alert=True)
     except Forbidden:
-        await query.answer(
-            "Bot sizga xabar yubora olmadi!\nAvval botga shaxsiy /start yuboring.",
-            show_alert=True,
-        )
+        await query.answer(t("start_bot_first", lang), show_alert=True)
     except BadRequest as e:
         logger.error("send role error: %s", e)
         await query.answer("Xatolik yuz berdi, qayta urining.", show_alert=True)
@@ -948,16 +948,16 @@ async def _on_end_game(query, context, game: GameState) -> None:
 # ─── bot commands setup ──────────────────────────────────────────────────────
 
 async def _expiry_reminder_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    bot_username = (await context.bot.get_me()).username
     for user_id, expires in get_expiring_soon(hours=24):
         try:
-            bot_username = (await context.bot.get_me()).username
+            lang = get_lang(user_id)
             keyboard = InlineKeyboardMarkup([[
-                InlineKeyboardButton("⭐ Uzaytirish", url=f"https://t.me/{bot_username}?start=subscribe")
+                InlineKeyboardButton(t("extend_btn", lang), url=f"https://t.me/{bot_username}?start=subscribe")
             ]])
             await context.bot.send_message(
                 user_id,
-                f"⚠️ Obunangiz holati: ertaga {expires.strftime('%d.%m.%Y %H:%M')} da tugaydi!\n"
-                f"Uzaytirish uchun quyidagi tugmani bosing.",
+                t("sub_expiry_reminder", lang, date=expires.strftime("%d.%m.%Y %H:%M")),
                 reply_markup=keyboard,
             )
         except Exception:
@@ -974,6 +974,7 @@ async def _set_commands(app: Application) -> None:
         BotCommand("groupstats", "Guruh reytingi"),
         BotCommand("promo",      "Promo kod ishlatish"),
         BotCommand("ref",        "Referral havola olish (+3 kun bonus)"),
+        BotCommand("language",   "Tilni o'zgartirish / Change language"),
         BotCommand("myid",      "O'zingizning Telegram ID ni ko'rish"),
         BotCommand("gift",      "[Admin] Foydalanuvchiga obuna sovg'a qilish"),
         BotCommand("addpromo",  "[Admin] Promo kod yaratish"),
@@ -1016,7 +1017,8 @@ def main() -> None:
     app.add_handler(CommandHandler("promo",      cmd_promo))
     app.add_handler(CommandHandler("addpromo",   cmd_addpromo))
     app.add_handler(CommandHandler("gift",       cmd_gift))
-    app.add_handler(CommandHandler("ref",        cmd_ref))
+    app.add_handler(CommandHandler("ref",      cmd_ref))
+    app.add_handler(CommandHandler("language", cmd_language))
     app.add_handler(CommandHandler("mystats",    cmd_mystats))
     app.add_handler(CommandHandler("groupstats", cmd_groupstats))
     app.add_handler(CommandHandler("groupsub",   cmd_groupsub))

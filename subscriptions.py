@@ -58,6 +58,10 @@ def _conn() -> sqlite3.Connection:
             stars      INTEGER NOT NULL,
             paid_at    TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS user_langs (
+            user_id INTEGER PRIMARY KEY,
+            lang    TEXT NOT NULL DEFAULT 'uz'
+        );
     """)
     con.commit()
     return con
@@ -259,6 +263,20 @@ def claim_referral_bonus(referred_id: int) -> Optional[int]:
 
 
 # ─── payments tracking ────────────────────────────────────────────────────────
+
+def get_lang(user_id: int) -> str:
+    con = _conn()
+    row = con.execute("SELECT lang FROM user_langs WHERE user_id = ?", (user_id,)).fetchone()
+    con.close()
+    return row[0] if row else "uz"
+
+
+def set_lang(user_id: int, lang: str) -> None:
+    con = _conn()
+    con.execute("INSERT OR REPLACE INTO user_langs (user_id, lang) VALUES (?, ?)", (user_id, lang))
+    con.commit()
+    con.close()
+
 
 def record_payment(user_id: int, plan_key: str, stars: int) -> None:
     con = _conn()

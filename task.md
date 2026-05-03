@@ -36,5 +36,7 @@
 ## ✅ Bajarildi (qo'shimcha 3)
 - [x] Ovoz berish — "🗳 Ovoz berish" tugmasi, natijalar, ayg'oqchi topildi/topilmadi
 
-## ⏳ Qolgan tasklar
-- [ ] Ko'p til — UZ / RU / EN (foydalanuvchi tanlaydi)
+## ✅ Bajarildi (qo'shimcha 4)
+- [x] Ko'p til — UZ / RU / EN, /language buyrug'i, barcha DM xabarlar tarjima qilingan
+
+## ✅ Barcha tasklar bajarildi!
