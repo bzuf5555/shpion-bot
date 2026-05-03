@@ -461,11 +461,13 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     s = get_global_stats()
     await update.message.reply_text(
-        f"📈 Bot statistikasi:\n"
-        f"Foydalanuvchilar: {s['users']} ta\n"
-        f"Faol obunalar: {s['active_sub']} ta\n"
-        f"Faol guruh obunalari: {s['active_grp']} ta\n"
-        f"Jami Stars daromad: ⭐ {s['total_stars']}"
+        f"📈 Bot statistikasi:\n\n"
+        f"👤 Foydalanuvchilar: {s['users']} ta\n"
+        f"🎮 Jami o'yinlar: {s['total_games']} ta\n"
+        f"👥 Jami o'yinchilar: {s['total_players']} ta\n\n"
+        f"✅ Faol obunalar: {s['active_sub']} ta\n"
+        f"🏘 Faol guruh obunalari: {s['active_grp']} ta\n\n"
+        f"⭐ Jami daromad: {s['total_stars']} Stars"
     )
 
 

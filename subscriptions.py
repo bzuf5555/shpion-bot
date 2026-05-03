@@ -324,16 +324,20 @@ def record_payment(user_id: int, plan_key: str, stars: int) -> None:
 def get_global_stats() -> dict:
     con = _conn()
     now = datetime.utcnow().isoformat()
-    users      = con.execute("SELECT COUNT(DISTINCT user_id) FROM game_history").fetchone()[0]
-    active_sub = con.execute("SELECT COUNT(*) FROM subscriptions WHERE expires_at > ?", (now,)).fetchone()[0]
-    active_grp = con.execute("SELECT COUNT(*) FROM group_subs WHERE expires_at > ?", (now,)).fetchone()[0]
-    total_games = con.execute("SELECT COUNT(*) FROM game_history").fetchone()[0]
+    users       = con.execute("SELECT COUNT(DISTINCT user_id) FROM game_history").fetchone()[0]
+    active_sub  = con.execute("SELECT COUNT(*) FROM subscriptions WHERE expires_at > ?", (now,)).fetchone()[0]
+    active_grp  = con.execute("SELECT COUNT(*) FROM group_subs WHERE expires_at > ?", (now,)).fetchone()[0]
+    total_rows  = con.execute("SELECT COUNT(*) FROM game_history").fetchone()[0]
+    unique_games = con.execute(
+        "SELECT COUNT(*) FROM (SELECT DISTINCT chat_id, played_at FROM game_history)"
+    ).fetchone()[0]
     total_stars = con.execute("SELECT COALESCE(SUM(stars),0) FROM payments").fetchone()[0]
     con.close()
     return {
-        "users": users,
-        "active_sub": active_sub,
-        "active_grp": active_grp,
-        "total_games": total_games // max(1, con.execute("SELECT COUNT(DISTINCT chat_id, played_at) FROM game_history").fetchone()[0] or 1),
-        "total_stars": total_stars,
+        "users":        users,
+        "active_sub":   active_sub,
+        "active_grp":   active_grp,
+        "total_games":  unique_games,
+        "total_players": total_rows,
+        "total_stars":  total_stars,
     }
