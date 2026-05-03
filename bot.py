@@ -112,6 +112,11 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if chat.type == ChatType.PRIVATE:
         return
 
+    user = update.effective_user
+    if not await _is_admin(chat, user.id):
+        await update.message.reply_text("Faqat guruh adminlari bu buyruqdan foydalana oladi.")
+        return
+
     game = get_game(chat.id)
     label = STATE_LABELS.get(game.state, game.state)
 
