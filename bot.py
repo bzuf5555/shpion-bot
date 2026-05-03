@@ -359,7 +359,12 @@ async def _on_role_reveal(query, context, game: GameState, user, target_uid: int
     is_spy = user.id in game.spies
     try:
         if is_spy:
-            await context.bot.send_message(user.id, "🕵️ Sen ayg'oqchisan!")
+            spy_img = "images/spy.jpg"
+            if os.path.isfile(spy_img):
+                with open(spy_img, "rb") as f:
+                    await context.bot.send_photo(user.id, f, caption="🕵️ Sen ayg'oqchisan!")
+            else:
+                await context.bot.send_message(user.id, "🕵️ Sen ayg'oqchisan!")
         else:
             image_path = game.selected_image or ""
             if image_path and os.path.isfile(image_path):
