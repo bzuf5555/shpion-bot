@@ -346,6 +346,7 @@ async def _on_buy(query, context, user, plan_key: str) -> None:
                 f"⚠️ Stars yetarli bo'lmasa: Telegram → Settings → Stars"
             ),
             payload=f"sub_{plan_key}",
+            provider_token="",
             currency="XTR",
             prices=[LabeledPrice(plan["label"], plan["stars"])],
         )
