@@ -19,5 +19,5 @@ CATEGORY_IMAGES: dict[str, str] = {
     "18+ Actress": "images/actress.jpg",
 }
 
-MIN_PLAYERS: int = 4
+MIN_PLAYERS: int = 1  # test uchun, keyinchalik 4 ga qaytaring
 MAX_PLAYERS: int = 15
