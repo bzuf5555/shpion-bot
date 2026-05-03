@@ -278,7 +278,7 @@ async def _on_category(query, game: GameState, category: str) -> None:
 
     if category == "🎲 Random":
         chosen = random.choice(REAL_CATEGORIES)
-        display = f"🎲 Random → {chosen}"
+        display = "🎲 Random"
     else:
         chosen = category
         display = category
