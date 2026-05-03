@@ -9,8 +9,10 @@ from telegram.error import BadRequest, Forbidden
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, PreCheckoutQueryHandler, filters
 
 from config import BOT_TOKEN, CATEGORIES, CATEGORY_IMAGES, MIN_PLAYERS, MAX_PLAYERS, OWNER_ID, REAL_CATEGORIES
+
+JOIN_TIMEOUT = 180  # 3 daqiqa (soniyada)
 from game import GameState, get_game, save_state, load_state
-from subscriptions import PLANS, add_subscription, get_expiry, is_subscribed
+from subscriptions import PLANS, add_subscription, get_expiry, is_subscribed, create_promo, use_promo
 
 # Har bir guruh uchun alohida minimum o'yinchi soni
 _chat_min: dict[int, int] = {}
@@ -162,6 +164,58 @@ async def cmd_mystatus(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         )
 
 
+async def cmd_addpromo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_owner(update.effective_user.id):
+        await update.message.reply_text("Bu buyruq faqat bot egasi uchun.")
+        return
+    if len(context.args) < 3:
+        await update.message.reply_text(
+            "Ishlatish: /addpromo KOD reja foydalanish_soni\n"
+            "Misol: /addpromo PROMO10 month 10"
+        )
+        return
+    code = context.args[0].upper()
+    plan_key = context.args[1].lower()
+    if plan_key not in PLANS:
+        await update.message.reply_text("Noto'g'ri reja: week | month | half | year")
+        return
+    try:
+        max_uses = int(context.args[2])
+    except ValueError:
+        await update.message.reply_text("Foydalanish soni raqam bo'lishi kerak.")
+        return
+    create_promo(code, plan_key, max_uses)
+    plan = PLANS[plan_key]
+    await update.message.reply_text(
+        f"✅ Promo kod yaratildi!\n"
+        f"Kod: {code}\nReja: {plan['label']}\nLimit: {max_uses} marta"
+    )
+
+
+async def cmd_promo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not context.args:
+        await update.message.reply_text("Ishlatish: /promo KOD")
+        return
+    code = context.args[0]
+    user_id = update.effective_user.id
+    result = use_promo(code, user_id)
+
+    if result == "not_found":
+        await update.message.reply_text("❌ Bunday promo kod mavjud emas.")
+    elif result == "already_used":
+        await update.message.reply_text("❌ Bu promo kodni allaqachon ishlatgansiz.")
+    elif result == "expired":
+        await update.message.reply_text("❌ Bu promo kodning limiti tugagan.")
+    else:
+        plan = PLANS[result]
+        expires = add_subscription(user_id, plan["days"])
+        await update.message.reply_text(
+            f"✅ Promo kod qabul qilindi!\n"
+            f"Obuna: {plan['label']}\n"
+            f"Tugash sanasi: {expires.strftime('%d.%m.%Y')}"
+        )
+
+
 async def cmd_gift(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _is_owner(update.effective_user.id):
         await update.message.reply_text("Bu buyruq faqat bot egasi uchun.")
@@ -227,6 +281,7 @@ async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await update.message.reply_text("Bu buyruq faqat bot egasi uchun.")
         return
 
+    _cancel_join_job(context, chat.id)
     game.reset()
     save_state()
     await update.message.reply_text("O'yin bekor qilindi. Yangi o'yin uchun /start bosing.")
@@ -364,15 +419,15 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if data.startswith("cat_"):
         await _on_category(query, game, data[4:])
     if data.startswith("spy_"):
-        await _on_spy_count(query, game, int(data[4:]))
+        await _on_spy_count(query, context, game, int(data[4:]))
     elif data == "join":
         await _on_join(query, game, user)
     elif data == "start_game":
-        await _on_start_game(query, game)
+        await _on_start_game(query, context, game)
     elif data.startswith("role_"):
         await _on_role_reveal(query, context, game, user, int(data[5:]))
     elif data == "end_game":
-        await _on_end_game(query, game)
+        await _on_end_game(query, context, game)
 
 
 # ─── payment handlers ────────────────────────────────────────────────────────
@@ -450,7 +505,50 @@ async def _on_category(query, game: GameState, category: str) -> None:
     )
 
 
-async def _on_spy_count(query, game: GameState, count: int) -> None:
+def _cancel_join_job(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> None:
+    for job in context.job_queue.get_jobs_by_name(f"join_{chat_id}"):
+        job.schedule_removal()
+
+
+async def _join_timeout_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat_id = context.job.chat_id
+    game = get_game(chat_id)
+    if game.state != "joining":
+        return
+
+    min_p = get_min(chat_id)
+    if len(game.players) < min_p:
+        game.reset()
+        save_state()
+        await context.bot.send_message(
+            chat_id, "⏰ Vaqt tugadi! Yetarli o'yinchi qo'shilmadi. /start bilan qayta boshlang."
+        )
+        return
+
+    game.state = "roles"
+    game.assign_spies()
+    images = CATEGORY_IMAGES.get(game.category, [])
+    game.selected_image = random.choice(images) if images else None
+    save_state()
+
+    keyboard = _role_keyboard(game)
+    text = (
+        f"⏰ Vaqt tugadi! O'yin avtomatik boshlandi.\nKategoriya: {game.category}\n\n"
+        "O'z ismingizni toping va bosing — rolingizni shaxsiy chatda bilib oling:"
+    )
+    if game.join_message_id:
+        try:
+            await context.bot.edit_message_text(
+                chat_id=chat_id, message_id=game.join_message_id,
+                text=text, reply_markup=keyboard,
+            )
+            return
+        except Exception:
+            pass
+    await context.bot.send_message(chat_id, text, reply_markup=keyboard)
+
+
+async def _on_spy_count(query, context, game: GameState, count: int) -> None:
     if game.state != "spies":
         return
     game.spy_count = count
@@ -458,12 +556,19 @@ async def _on_spy_count(query, game: GameState, count: int) -> None:
     game.join_chat_id = query.message.chat_id
     save_state()
 
-    msg = await query.edit_message_text(
+    await query.edit_message_text(
         _join_text(game),
         reply_markup=_join_keyboard(0, get_min(query.message.chat_id)),
     )
     game.join_message_id = query.message.message_id
     save_state()
+
+    context.job_queue.run_once(
+        _join_timeout_job,
+        JOIN_TIMEOUT,
+        chat_id=query.message.chat_id,
+        name=f"join_{query.message.chat_id}",
+    )
 
 
 async def _on_join(query, game: GameState, user) -> None:
@@ -485,7 +590,7 @@ async def _on_join(query, game: GameState, user) -> None:
     )
 
 
-async def _on_start_game(query, game: GameState) -> None:
+async def _on_start_game(query, context, game: GameState) -> None:
     if game.state != "joining":
         return
     min_p = get_min(query.message.chat_id)
@@ -493,6 +598,7 @@ async def _on_start_game(query, game: GameState) -> None:
         await query.answer(f"Kamida {min_p} ta o'yinchi kerak!", show_alert=True)
         return
 
+    _cancel_join_job(context, query.message.chat_id)
     game.state = "roles"
     game.assign_spies()
     images = CATEGORY_IMAGES.get(game.category, [])
@@ -552,11 +658,12 @@ async def _on_role_reveal(query, context, game: GameState, user, target_uid: int
         await query.answer("Xatolik yuz berdi, qayta urining.", show_alert=True)
 
 
-async def _on_end_game(query, game: GameState) -> None:
+async def _on_end_game(query, context, game: GameState) -> None:
     if game.state == "idle":
         return
 
-    # Build result line before reset
+    _cancel_join_job(context, query.message.chat_id)
+
     if game.state == "roles" and game.spies:
         spy_names = [game.player_names[uid] for uid in game.spies]
         result = "Ayg'oqchi(lar): " + ", ".join(spy_names)
@@ -581,8 +688,10 @@ async def _set_commands(app: Application) -> None:
         BotCommand("start",     "O'yinni boshlash"),
         BotCommand("subscribe", "Obuna olish (Stars bilan)"),
         BotCommand("mystatus",  "Obuna holatini ko'rish"),
+        BotCommand("promo",     "Promo kod ishlatish"),
         BotCommand("myid",      "O'zingizning Telegram ID ni ko'rish"),
         BotCommand("gift",      "[Admin] Foydalanuvchiga obuna sovg'a qilish"),
+        BotCommand("addpromo",  "[Admin] Promo kod yaratish"),
         BotCommand("cancel",    "[Admin] O'yinni bekor qilish"),
         BotCommand("status",    "[Admin] O'yin holatini ko'rish"),
         BotCommand("setmin",    "[Admin] Minimum o'yinchi sonini belgilash"),
@@ -609,11 +718,18 @@ def main() -> None:
 
     load_state()
 
-    app = Application.builder().token(BOT_TOKEN).post_init(_set_commands).build()
+    app = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .post_init(_set_commands)
+        .build()
+    )
     app.add_handler(CommandHandler("start",     cmd_start))
     app.add_handler(CommandHandler("subscribe", cmd_subscribe))
     app.add_handler(CommandHandler("mystatus",  cmd_mystatus))
-    app.add_handler(CommandHandler("gift",   cmd_gift))
+    app.add_handler(CommandHandler("promo",    cmd_promo))
+    app.add_handler(CommandHandler("addpromo", cmd_addpromo))
+    app.add_handler(CommandHandler("gift",     cmd_gift))
     app.add_handler(CommandHandler("cancel", cmd_cancel))
     app.add_handler(CommandHandler("status",    cmd_status))
     app.add_handler(CommandHandler("setmin",    cmd_setmin))

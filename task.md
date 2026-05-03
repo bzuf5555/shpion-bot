@@ -1,29 +1,35 @@
 # Shpion Bot — Vazifalar
 
 ## ✅ Bajarildi
-- [x] Loyiha tuzilmasi va fayllar yaratildi
-- [x] `config.py` — sozlamalar va konstantalar
-- [x] `game.py` — o'yin holati va mantiq
-- [x] `bot.py` — asosiy bot kodi (barcha handlerlar)
-- [x] `requirements.txt` — kutubxonalar ro'yxati
-- [x] `.env.example` — muhit o'zgaruvchilari namunasi
-- [x] `CLAUDE.md` — loyiha hujjatlari
-- [x] Kategoriya tanlash oqimi (Cars, Watches, Jobs, Bloggers, 18+ Actress)
+- [x] Loyiha tuzilmasi va fayllar
+- [x] Kategoriya tanlash (Cars, Watches, Jobs, Bloggers, 18+ Actress, Others, 🎲 Random)
 - [x] Ayg'oqchi soni tanlash (1–9)
-- [x] O'yinga qo'shilish tugmasi va 15 ta limit
-- [x] 4+ o'yinchi bo'lganda "O'yinni boshlash" tugmasi
+- [x] O'yinga qo'shilish (max 15), boshlash (min 1 test)
 - [x] Tasodifiy ayg'oqchi tayinlash
-- [x] Har bir o'yinchi o'z ismini bosib rolini ko'rishi
-- [x] Ayg'oqchiga "Sen ayg'oqchisan!" xabari
-- [x] Oddiy o'yinchilarga kategoriya tasviri (DM)
-- [x] "O'yinni tugatish" tugmasi va reset
-- [x] Rasm fayllarini generatsiya qilish (Pillow, barcha 5 kategoriya)
-- [x] Admin buyruqlari — `/cancel` (admin), `/status` (holat ko'rish)
-- [x] O'yin natijasini guruhga e'lon qilish (kim ayg'oqchi edi?)
-- [x] JSON file persistence — `game_state.json` restart'dan keyin holat saqlanadi
-- [x] Ko'p guruh uchun parallel o'yinlar (chat_id kalit orqali — ishlaydi)
+- [x] Rollar DM orqali (rasm + ayg'oqchi rasmi)
+- [x] O'yin natijasini guruhga e'lon qilish
+- [x] SQLite persistence (restart'dan keyin tiklanadi)
+- [x] Ko'p guruh parallel o'yinlar
+- [x] Admin buyruqlari: /cancel, /status, /setmin, /reveal, /kick
+- [x] Faqat owner uchun buyruqlar (OWNER_ID)
+- [x] Har kategoriyada haqiqiy rasmlar (random tanlanadi)
+- [x] Railway da 24/7 hosting
+- [x] Telegram Stars obuna tizimi (week/month/half/year)
+- [x] /gift @username — bepul obuna sovg'a
+- [x] /subscribe, /mystatus buyruqlari
+- [x] Bot commands menyusi (/ bosganda)
+- [x] Others kategoriyasi (28 rasm)
 
-## ⏳ Keyingi bosqich (ixtiyoriy)
-- [x] DB persistence — SQLite (default) + PostgreSQL (DATABASE_URL berilsa) qo'llab-quvvatlash
-- [ ] O'yin vaqt limiti — qo'shilish bosqichi uchun timeout
-- [ ] O'yinchi chiqib ketish imkoniyati ("Chiqish" tugmasi qo'shilish bosqichida)
+## 🔄 Bajarilmoqda
+- [ ] Vaqt limiti — qo'shilish bosqichi uchun 3 daqiqa timeout
+- [ ] Promo kod — /promo CODE bilan bepul obuna
+
+## ⏳ Navbatdagi
+- [ ] Ovoz berish — kim ayg'oqchi deb ovoz berish
+- [ ] O'yin tarixi — guruh statistikasi (necha o'yin, kim necha marta ayg'oqchi)
+- [ ] Referral — do'st taklif qilgan 3 kun bonus oladi
+- [ ] Obuna eslatmasi — tugashidan 1 kun oldin DM
+- [ ] Guruh obunasi — guruh egasi to'laydi, hammasi bepul o'ynaydi
+- [ ] Promo kod statistikasi — kim qancha ishlatgan
+- [ ] Statistika panel — /stats (owner): foydalanuvchilar, obunalar, daromad
+- [ ] Ko'p til — UZ / RU / EN (foydalanuvchi tanlaydi)

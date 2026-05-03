@@ -20,6 +20,21 @@ def _conn() -> sqlite3.Connection:
             expires_at TEXT NOT NULL
         )
     """)
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS promo_codes (
+            code       TEXT PRIMARY KEY,
+            plan_key   TEXT NOT NULL,
+            max_uses   INTEGER NOT NULL,
+            used_count INTEGER DEFAULT 0
+        )
+    """)
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS promo_uses (
+            code    TEXT,
+            user_id INTEGER,
+            PRIMARY KEY (code, user_id)
+        )
+    """)
     con.commit()
     return con
 
@@ -52,6 +67,58 @@ def add_subscription(user_id: int, days: int) -> datetime:
     con.commit()
     con.close()
     return expires
+
+
+# ─── promo codes ─────────────────────────────────────────────────────────────
+
+def create_promo(code: str, plan_key: str, max_uses: int) -> None:
+    con = _conn()
+    con.execute(
+        "INSERT OR REPLACE INTO promo_codes (code, plan_key, max_uses, used_count) VALUES (?, ?, ?, 0)",
+        (code.upper(), plan_key, max_uses)
+    )
+    con.commit()
+    con.close()
+
+
+def use_promo(code: str, user_id: int) -> str:
+    """Returns: plan_key | 'not_found' | 'already_used' | 'expired'"""
+    con = _conn()
+    row = con.execute(
+        "SELECT plan_key, max_uses, used_count FROM promo_codes WHERE code = ?",
+        (code.upper(),)
+    ).fetchone()
+
+    if not row:
+        con.close()
+        return "not_found"
+
+    plan_key, max_uses, used_count = row
+
+    already = con.execute(
+        "SELECT 1 FROM promo_uses WHERE code = ? AND user_id = ?",
+        (code.upper(), user_id)
+    ).fetchone()
+
+    if already:
+        con.close()
+        return "already_used"
+
+    if used_count >= max_uses:
+        con.close()
+        return "expired"
+
+    con.execute(
+        "UPDATE promo_codes SET used_count = used_count + 1 WHERE code = ?",
+        (code.upper(),)
+    )
+    con.execute(
+        "INSERT INTO promo_uses (code, user_id) VALUES (?, ?)",
+        (code.upper(), user_id)
+    )
+    con.commit()
+    con.close()
+    return plan_key
 
 
 def get_expiry(user_id: int) -> Optional[datetime]:
