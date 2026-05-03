@@ -17,7 +17,7 @@ CATEGORY_IMAGES: dict[str, list[str]] = {
     "Watches":     ["images/watches_1.jpg",  "images/watches_2.jpg",  "images/watches_3.jpg"],
     "Jobs":        ["images/jobs_1.jpg",     "images/jobs_2.jpg",     "images/jobs_3.jpg"],
     "Bloggers":    ["images/bloggers_1.jpg", "images/bloggers_2.jpg", "images/bloggers_3.jpg"],
-    "18+ Actress": ["images/actress_1.jpg",  "images/actress_2.jpg",  "images/actress_3.jpg"],
+    "18+ Actress": [f"images/actress_{i}.jpg" for i in range(1, 8)],
 }
 
 MIN_PLAYERS: int = 1  # test uchun, keyinchalik 4 ga qaytaring
