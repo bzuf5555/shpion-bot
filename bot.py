@@ -263,7 +263,9 @@ async def cmd_addpromo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if len(context.args) < 3:
         await update.message.reply_text(
             "Ishlatish: /addpromo KOD reja foydalanish_soni\n"
-            "Misol: /addpromo PROMO10 month 10"
+            "Misol: /addpromo PROMO10 month 10\n\n"
+            "Rejalar: week | month | half | year\n"
+            "Kodni user /promo KOD buyrug'i bilan ishlatadi."
         )
         return
     code = context.args[0].upper()
@@ -286,7 +288,7 @@ async def cmd_addpromo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def cmd_promo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.args:
-        await update.message.reply_text("Ishlatish: /promo KOD")
+        await update.message.reply_text("Ishlatish: /promo KOD\nMisol: /promo PROMO10")
         return
     code = context.args[0]
     user_id = update.effective_user.id
@@ -504,35 +506,46 @@ async def cmd_gift(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if len(context.args) < 2:
         await update.message.reply_text(
-            "Ishlatish: /gift @username week | month | half | year"
+            "Ishlatish: /gift USER_ID reja\n"
+            "Misol: /gift 123456789 month\n"
+            "Rejalar: week | month | half | year\n\n"
+            "💡 User ID ni bilish uchun user /myid buyrug'ini yuboring."
         )
         return
 
-    username = context.args[0].lstrip("@")
+    target = context.args[0]
     plan_key = context.args[1].lower()
     plan = PLANS.get(plan_key)
 
-    if not plan:
+    if not plan or plan.get("group"):
         await update.message.reply_text(
             "Noto'g'ri reja. Quyidagilardan birini tanlang:\n"
             "week | month | half | year"
         )
         return
 
+    raw = target.lstrip("@").strip()
     try:
-        chat = await context.bot.get_chat(f"@{username}")
-        user_id = chat.id
-        name = f"@{username}"
-    except Exception:
-        await update.message.reply_text(
-            f"@{username} topilmadi. Username to'g'riligini tekshiring."
-        )
-        return
+        user_id = int(raw)
+        name = str(user_id)
+    except ValueError:
+        try:
+            chat = await context.bot.get_chat(f"@{raw}")
+            user_id = chat.id
+            name = f"@{raw}"
+        except Exception:
+            await update.message.reply_text(
+                f"@{raw} topilmadi.\n\n"
+                "Username o'rniga User ID dan foydalaning:\n"
+                "Misol: /gift 123456789 month\n"
+                "💡 User ID ni bilish uchun user /myid buyrug'ini yuboring."
+            )
+            return
 
     expires = add_subscription(user_id, plan["days"])
 
     await update.message.reply_text(
-        f"🎁 @{username} ga {plan['label']} obuna sovg'a qilindi!\n"
+        f"🎁 {name} ga {plan['label']} obuna sovg'a qilindi!\n"
         f"Tugash sanasi: {expires.strftime('%d.%m.%Y')}"
     )
 
@@ -1154,7 +1167,7 @@ async def _set_commands(app: Application) -> None:
         BotCommand("ref",        "Referral havola olish (+3 kun bonus)"),
         BotCommand("language",   "Tilni o'zgartirish / Change language"),
         BotCommand("myid",      "O'zingizning Telegram ID ni ko'rish"),
-        BotCommand("gift",      "[Admin] Foydalanuvchiga obuna sovg'a qilish"),
+        BotCommand("gift",      "[Admin] /gift USER_ID reja — obuna sovg'a qilish"),
         BotCommand("addpromo",      "[Admin] Promo kod yaratish"),
         BotCommand("stats",         "[Admin] Bot statistikasi"),
         BotCommand("addcategory",   "[Admin] Yangi kategoriya qo'shish"),
